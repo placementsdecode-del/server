@@ -1,7 +1,7 @@
 import cors from "cors";
 import express from "express";
 import morgan from "morgan";
-import swaggerUi from "swagger-ui-express";
+import swaggerUiDist from "swagger-ui-dist";
 
 import openApiSpec from "./docs/openapi";
 import { errorHandler, notFound } from "./middleware/error";
@@ -13,6 +13,7 @@ import roleRoutes from "./routes/role.routes";
 import userRoutes from "./routes/user.routes";
 
 const app = express();
+const swaggerAssetsPath = swaggerUiDist.getAbsoluteFSPath();
 
 app.use(cors());
 app.use(express.json());
@@ -30,16 +31,11 @@ app.get("/openapi.json", (req, res) => {
   res.json(openApiSpec);
 });
 
-app.get(/^\/api-docs$/, (req, res) => {
-  res.redirect(301, "/api-docs/");
-});
-
 app.get(
   [
     "/swagger-ui.css",
     "/swagger-ui-bundle.js",
     "/swagger-ui-standalone-preset.js",
-    "/swagger-ui-init.js",
     "/favicon-16x16.png",
     "/favicon-32x32.png",
   ],
@@ -48,7 +44,41 @@ app.get(
   }
 );
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+app.get(["/api-docs/swagger-ui-init.js", "/swagger-ui-init.js"], (req, res) => {
+  res.type("application/javascript").send(`
+window.onload = function () {
+  window.ui = SwaggerUIBundle({
+    url: "/openapi.json",
+    dom_id: "#swagger-ui",
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+    layout: "StandaloneLayout"
+  });
+};
+`);
+});
+
+app.get(/^\/api-docs\/?$/, (req, res) => {
+  res.type("html").send(`
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Placement Decode API Docs</title>
+    <link rel="stylesheet" href="/api-docs/swagger-ui.css" />
+    <link rel="icon" href="/api-docs/favicon-32x32.png" />
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="/api-docs/swagger-ui-bundle.js"></script>
+    <script src="/api-docs/swagger-ui-standalone-preset.js"></script>
+    <script src="/api-docs/swagger-ui-init.js"></script>
+  </body>
+</html>
+`);
+});
+
+app.use("/api-docs", express.static(swaggerAssetsPath, { index: false }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/features", featureRoutes);
