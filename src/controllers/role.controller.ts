@@ -1,11 +1,11 @@
-const ApiError = require("../utils/apiError");
-const Role = require("../models/Role");
-const asyncHandler = require("../utils/asyncHandler");
-const {
+import Role from "../models/Role";
+import {
   ensureOrganizationRoles,
   getAllowedPermissions,
   getRoleDefinitions,
-} = require("../services/rbac.service");
+} from "../services/rbac.service";
+import ApiError from "../utils/apiError";
+import asyncHandler from "../utils/asyncHandler";
 
 const listPermissions = asyncHandler(async (req, res) => {
   res.json({ permissions: getAllowedPermissions() });
@@ -16,10 +16,10 @@ const listRoleDefinitions = asyncHandler(async (req, res) => {
 });
 
 const listRoles = asyncHandler(async (req, res) => {
-  const filter = {};
+  const filter: { organization?: string | object } = {};
 
   if (req.user.roleName === "superadmin") {
-    if (req.query.organization) {
+    if (typeof req.query.organization === "string") {
       filter.organization = req.query.organization;
     }
   } else {
@@ -90,7 +90,7 @@ const updateRole = asyncHandler(async (req, res) => {
   res.json({ message: "Role updated", role });
 });
 
-module.exports = {
+export {
   listPermissions,
   listRoleDefinitions,
   listRoles,

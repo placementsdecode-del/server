@@ -1,4 +1,4 @@
-const openApiSpec = {
+const openApiSpec: any = {
   openapi: "3.0.3",
   info: {
     title: "Placement Decode API",
@@ -946,4 +946,4 @@ openApiSpec.components.parameters = {
   },
 };
 
-module.exports = openApiSpec;
+export default openApiSpec;

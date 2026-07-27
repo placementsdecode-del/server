@@ -1,6 +1,6 @@
-const AcceptedOrganization = require("../models/AcceptedOrganization");
-const ApiError = require("../utils/apiError");
-const asyncHandler = require("../utils/asyncHandler");
+import AcceptedOrganization from "../models/AcceptedOrganization";
+import ApiError from "../utils/apiError";
+import asyncHandler from "../utils/asyncHandler";
 
 const listOrganizations = asyncHandler(async (req, res) => {
   const filter = req.user.roleName === "superadmin" ? {} : { _id: req.user.organization };
@@ -30,4 +30,4 @@ const getOrganization = asyncHandler(async (req, res) => {
   res.json({ organization });
 });
 
-module.exports = { listOrganizations, getOrganization };
+export { listOrganizations, getOrganization };

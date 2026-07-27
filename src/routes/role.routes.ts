@@ -1,13 +1,15 @@
-const router = require("express").Router();
+import { Router } from "express";
 
-const {
+import {
   listPermissions,
   listRoleDefinitions,
   listRoles,
   syncOrganizationRoles,
   updateRole,
-} = require("../controllers/role.controller");
-const { requireAuth, requireRoles } = require("../middleware/auth");
+} from "../controllers/role.controller";
+import { requireAuth, requireRoles } from "../middleware/auth";
+
+const router = Router();
 
 router.get("/", requireAuth, requireRoles("superadmin", "admin"), listRoles);
 router.get("/definitions", requireAuth, requireRoles("superadmin", "admin"), listRoleDefinitions);
@@ -15,4 +17,4 @@ router.get("/permissions", requireAuth, requireRoles("superadmin", "admin"), lis
 router.post("/organizations/:organizationId/sync", requireAuth, requireRoles("superadmin", "admin"), syncOrganizationRoles);
 router.patch("/:roleId", requireAuth, requireRoles("superadmin", "admin"), updateRole);
 
-module.exports = router;
+export default router;

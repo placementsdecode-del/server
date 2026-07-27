@@ -1,6 +1,7 @@
-const jwt = require("jsonwebtoken");
-const ApiError = require("../utils/apiError");
-const User = require("../models/User");
+import jwt from "jsonwebtoken";
+
+import User from "../models/User";
+import ApiError from "../utils/apiError";
 
 async function requireAuth(req, res, next) {
   try {
@@ -49,4 +50,4 @@ function requireOrganizationAccess(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireRoles, requireOrganizationAccess };
+export { requireAuth, requireRoles, requireOrganizationAccess };

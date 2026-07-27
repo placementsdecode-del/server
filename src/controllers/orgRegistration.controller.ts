@@ -1,11 +1,11 @@
-const AcceptedOrganization = require("../models/AcceptedOrganization");
-const ApiError = require("../utils/apiError");
-const RegisterOrg = require("../models/RegisterOrg");
-const User = require("../models/User");
-const asyncHandler = require("../utils/asyncHandler");
-const { ensureOrganizationRoles } = require("../services/rbac.service");
-const { generateTemporaryPassword } = require("../utils/password");
-const { sendOrganizationCredentials } = require("../services/mail.service");
+import AcceptedOrganization from "../models/AcceptedOrganization";
+import RegisterOrg from "../models/RegisterOrg";
+import User from "../models/User";
+import { sendOrganizationCredentials } from "../services/mail.service";
+import { ensureOrganizationRoles } from "../services/rbac.service";
+import ApiError from "../utils/apiError";
+import asyncHandler from "../utils/asyncHandler";
+import { generateTemporaryPassword } from "../utils/password";
 
 const createRegistration = asyncHandler(async (req, res) => {
   const { id, externalId, orgName, orgEmail, address, phoneNumber, requestedFeatures } = req.body;
@@ -31,8 +31,8 @@ const createRegistration = asyncHandler(async (req, res) => {
 
 const listRegistrations = asyncHandler(async (req, res) => {
   const { status } = req.query;
-  const filter = status ? { status } : {};
-  const registrations = await RegisterOrg.find(filter)
+  const filter = typeof status === "string" ? { status } : {};
+  const registrations = await RegisterOrg.find(filter as any)
     .populate("requestedFeatures")
     .populate("reviewedBy", "name email roleName")
     .populate("acceptedOrganization")
@@ -145,7 +145,7 @@ const rejectRegistration = asyncHandler(async (req, res) => {
   res.json({ message: "Organization registration rejected", registration });
 });
 
-module.exports = {
+export {
   createRegistration,
   listRegistrations,
   getRegistration,

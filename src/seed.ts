@@ -1,9 +1,9 @@
-require("dotenv").config();
+import "dotenv/config";
 
-const connectDB = require("./config/db");
-const Feature = require("./models/Feature");
-const User = require("./models/User");
-const { ensureRole } = require("./services/rbac.service");
+import connectDB from "./config/db";
+import Feature from "./models/Feature";
+import User from "./models/User";
+import { ensureRole } from "./services/rbac.service";
 
 const defaultFeatures = [
   {

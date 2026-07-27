@@ -1,4 +1,4 @@
-const nodemailer = require("nodemailer");
+import nodemailer from "nodemailer";
 
 function buildTransport() {
   if (!process.env.SMTP_HOST) {
@@ -48,4 +48,4 @@ async function sendOrganizationCredentials({ to, orgName, email, password }) {
   });
 }
 
-module.exports = { sendOrganizationCredentials };
+export { sendOrganizationCredentials };

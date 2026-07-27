@@ -1,13 +1,15 @@
-const router = require("express").Router();
+import { Router } from "express";
 
-const {
+import {
   approveRegistration,
   createRegistration,
   getRegistration,
   listRegistrations,
   rejectRegistration,
-} = require("../controllers/orgRegistration.controller");
-const { requireAuth, requireRoles } = require("../middleware/auth");
+} from "../controllers/orgRegistration.controller";
+import { requireAuth, requireRoles } from "../middleware/auth";
+
+const router = Router();
 
 router.post("/", createRegistration);
 router.get("/", requireAuth, requireRoles("superadmin"), listRegistrations);
@@ -15,4 +17,4 @@ router.get("/:registrationId", requireAuth, requireRoles("superadmin"), getRegis
 router.post("/:registrationId/approve", requireAuth, requireRoles("superadmin"), approveRegistration);
 router.post("/:registrationId/reject", requireAuth, requireRoles("superadmin"), rejectRegistration);
 
-module.exports = router;
+export default router;

@@ -11,6 +11,13 @@ npm run seed
 npm run dev
 ```
 
+For production-style execution:
+
+```bash
+npm run build
+npm start
+```
+
 ## API Docs
 
 - Swagger UI: `http://localhost:5000/api-docs`

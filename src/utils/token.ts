@@ -1,4 +1,4 @@
-const jwt = require("jsonwebtoken");
+import jwt, { Secret } from "jsonwebtoken";
 
 function signToken(user) {
   return jwt.sign(
@@ -7,9 +7,9 @@ function signToken(user) {
       role: user.roleName,
       organization: user.organization ? user.organization.toString() : null,
     },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+    process.env.JWT_SECRET as Secret,
+    { expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as any }
   );
 }
 
-module.exports = { signToken };
+export { signToken };

@@ -1,7 +1,7 @@
-const ApiError = require("../utils/apiError");
-const asyncHandler = require("../utils/asyncHandler");
-const { signToken } = require("../utils/token");
-const User = require("../models/User");
+import User from "../models/User";
+import ApiError from "../utils/apiError";
+import asyncHandler from "../utils/asyncHandler";
+import { signToken } from "../utils/token";
 
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -10,7 +10,7 @@ const login = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Email and password are required");
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() })
+  const user: any = await User.findOne({ email: email.toLowerCase() })
     .select("+password")
     .populate("role")
     .populate("organization");
@@ -47,4 +47,4 @@ function sanitizeUser(user) {
   };
 }
 
-module.exports = { login, me };
+export { login, me };

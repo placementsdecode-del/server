@@ -1,4 +1,4 @@
-const Role = require("../models/Role");
+import Role from "../models/Role";
 
 const permissions = [
   "features:manage",
@@ -92,7 +92,7 @@ function getRoleDefinitions() {
   return roleDefinitions;
 }
 
-module.exports = {
+export {
   ensureRole,
   ensureOrganizationRoles,
   getAllowedPermissions,

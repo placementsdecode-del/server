@@ -1,8 +1,8 @@
-const ApiError = require("../utils/apiError");
-const User = require("../models/User");
-const asyncHandler = require("../utils/asyncHandler");
-const { ensureRole } = require("../services/rbac.service");
-const { generateTemporaryPassword } = require("../utils/password");
+import User from "../models/User";
+import { ensureRole } from "../services/rbac.service";
+import ApiError from "../utils/apiError";
+import asyncHandler from "../utils/asyncHandler";
+import { generateTemporaryPassword } from "../utils/password";
 
 const listUsers = asyncHandler(async (req, res) => {
   const organization = req.user.roleName === "superadmin" ? req.query.organization : req.user.organization;
@@ -64,4 +64,4 @@ const createUser = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { listUsers, createUser };
+export { listUsers, createUser };

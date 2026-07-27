@@ -1,6 +1,6 @@
 function notFound(req, res, next) {
   const error = new Error(`Route not found: ${req.originalUrl}`);
-  error.statusCode = 404;
+  (error as Error & { statusCode: number }).statusCode = 404;
   next(error);
 }
 
@@ -13,4 +13,4 @@ function errorHandler(error, req, res, next) {
   });
 }
 
-module.exports = { notFound, errorHandler };
+export { notFound, errorHandler };

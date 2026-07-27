@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const acceptedOrganizationSchema = new mongoose.Schema(
   {
@@ -59,4 +59,4 @@ const acceptedOrganizationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("AcceptedOrganization", acceptedOrganizationSchema);
+export default mongoose.model("AcceptedOrganization", acceptedOrganizationSchema);

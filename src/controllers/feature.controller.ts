@@ -1,6 +1,6 @@
-const ApiError = require("../utils/apiError");
-const asyncHandler = require("../utils/asyncHandler");
-const Feature = require("../models/Feature");
+import Feature from "../models/Feature";
+import ApiError from "../utils/apiError";
+import asyncHandler from "../utils/asyncHandler";
 
 const listFeatures = asyncHandler(async (req, res) => {
   const filter = req.user && req.user.roleName === "superadmin" ? {} : { isActive: true };
@@ -32,4 +32,4 @@ const updateFeature = asyncHandler(async (req, res) => {
   res.json({ feature });
 });
 
-module.exports = { listFeatures, createFeature, updateFeature };
+export { listFeatures, createFeature, updateFeature };

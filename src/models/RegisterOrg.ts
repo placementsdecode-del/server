@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const registerOrgSchema = new mongoose.Schema(
   {
@@ -65,4 +65,4 @@ const registerOrgSchema = new mongoose.Schema(
 
 registerOrgSchema.index({ orgEmail: 1, status: 1 });
 
-module.exports = mongoose.model("RegisterOrg", registerOrgSchema);
+export default mongoose.model("RegisterOrg", registerOrgSchema);
