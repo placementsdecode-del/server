@@ -11,6 +11,12 @@ npm run seed
 npm run dev
 ```
 
+## API Docs
+
+- Swagger UI: `http://localhost:5000/api-docs`
+- Raw OpenAPI JSON: `http://localhost:5000/openapi.json`
+- Health checks: `http://localhost:5000/health` and `http://localhost:5000/api/health`
+
 ## Flow
 
 1. Organization submits registration with `id`, `orgName`, `orgEmail`, `address`, `phoneNumber`, and optional `requestedFeatures`.
