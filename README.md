@@ -18,6 +18,8 @@ npm run build
 npm start
 ```
 
+On Vercel, requests are routed through [api/index.ts](/home/lenovo/Desktop/placement-decode/server/api/index.ts) with [vercel.json](/home/lenovo/Desktop/placement-decode/server/vercel.json).
+
 ## API Docs
 
 - Swagger UI: `http://localhost:5000/api-docs`
