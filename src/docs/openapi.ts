@@ -435,7 +435,8 @@ const openApiSpec: any = {
                   requestedFeatures: {
                     type: "array",
                     items: { type: "string" },
-                    example: ["66b4f25b6d6fa9f03f73e001"],
+                    description: "Feature ObjectIds or feature keys.",
+                    example: ["student-workspace", "assessments", "analytics"],
                   },
                 },
               },
@@ -537,7 +538,8 @@ const openApiSpec: any = {
                   features: {
                     type: "array",
                     items: { type: "string" },
-                    example: ["66b4f25b6d6fa9f03f73e001"],
+                    description: "Feature ObjectIds or feature keys.",
+                    example: ["student-workspace", "assessments", "analytics"],
                   },
                   adminName: { type: "string", example: "Decode Admin" },
                   discussionNotes: { type: "string", example: "Approved after feature discussion." },

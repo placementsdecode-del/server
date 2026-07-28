@@ -1,6 +1,7 @@
 import AcceptedOrganization from "../models/AcceptedOrganization";
 import RegisterOrg from "../models/RegisterOrg";
 import User from "../models/User";
+import { resolveFeatureIds } from "../services/feature.service";
 import { sendOrganizationCredentials } from "../services/mail.service";
 import { ensureOrganizationRoles } from "../services/rbac.service";
 import ApiError from "../utils/apiError";
@@ -14,13 +15,15 @@ const createRegistration = asyncHandler(async (req, res) => {
     throw new ApiError(400, "orgName, orgEmail, address, and phoneNumber are required");
   }
 
+  const requestedFeatureIds = await resolveFeatureIds(requestedFeatures);
+
   const registration = await RegisterOrg.create({
     externalId: externalId || id,
     orgName,
     orgEmail,
     address,
     phoneNumber,
-    requestedFeatures,
+    requestedFeatures: requestedFeatureIds,
   });
 
   res.status(201).json({
@@ -67,7 +70,7 @@ const approveRegistration = asyncHandler(async (req, res) => {
     throw new ApiError(409, "Only pending registrations can be approved");
   }
 
-  const selectedFeatures = features || registration.requestedFeatures;
+  const selectedFeatures = features ? await resolveFeatureIds(features) : registration.requestedFeatures;
 
   const organization = await AcceptedOrganization.create({
     registrationRequest: registration._id,

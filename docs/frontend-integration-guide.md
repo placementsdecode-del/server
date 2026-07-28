@@ -168,6 +168,12 @@ Request:
 }
 ```
 
+`requestedFeatures` can contain feature `_id`s from `GET /api/features` or stable feature keys such as:
+
+```json
+["student-workspace", "assessments", "analytics"]
+```
+
 Response:
 
 ```json
@@ -220,6 +226,8 @@ Request:
   "discussionNotes": "Approved after discussion."
 }
 ```
+
+`features` can also contain feature keys, using the same format as public registration.
 
 Approval creates:
 

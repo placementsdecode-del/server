@@ -1,45 +1,14 @@
 import "dotenv/config";
 
 import connectDB from "./config/db";
-import Feature from "./models/Feature";
 import User from "./models/User";
+import { ensureDefaultFeatures } from "./services/feature.service";
 import { ensureRole } from "./services/rbac.service";
-
-const defaultFeatures = [
-  {
-    key: "student-management",
-    name: "Student Management",
-    description: "Create and manage student accounts.",
-    enabledByDefault: true,
-  },
-  {
-    key: "teacher-management",
-    name: "Teacher Management",
-    description: "Create and manage teacher accounts.",
-    enabledByDefault: true,
-  },
-  {
-    key: "placement-drives",
-    name: "Placement Drives",
-    description: "Manage placement drives and related workflows.",
-    enabledByDefault: false,
-  },
-  {
-    key: "reports",
-    name: "Reports",
-    description: "View organization-level placement reports.",
-    enabledByDefault: false,
-  },
-];
 
 async function seed() {
   await connectDB();
 
-  await Promise.all(
-    defaultFeatures.map((feature) =>
-      Feature.findOneAndUpdate({ key: feature.key }, { $set: feature }, { upsert: true, new: true })
-    )
-  );
+  await ensureDefaultFeatures();
 
   const [superadminRole] = await Promise.all([
     ensureRole("superadmin", null, true),

@@ -1,8 +1,11 @@
 import Feature from "../models/Feature";
+import { ensureDefaultFeatures } from "../services/feature.service";
 import ApiError from "../utils/apiError";
 import asyncHandler from "../utils/asyncHandler";
 
 const listFeatures = asyncHandler(async (req, res) => {
+  await ensureDefaultFeatures();
+
   const filter = req.user && req.user.roleName === "superadmin" ? {} : { isActive: true };
   const features = await Feature.find(filter).sort({ name: 1 });
   res.json({ features });
