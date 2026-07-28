@@ -14,7 +14,15 @@ import userRoutes from "./routes/user.routes";
 const app = express();
 const swaggerUiVersion = "5.32.11";
 
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+app.options(/.*/, cors());
 app.use(express.json());
 app.use(morgan("dev"));
 

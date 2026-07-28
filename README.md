@@ -25,6 +25,7 @@ On Vercel, requests are routed through [api/index.ts](/home/lenovo/Desktop/place
 - Swagger UI: `http://localhost:5000/api-docs`
 - Raw OpenAPI JSON: `http://localhost:5000/openapi.json`
 - Health checks: `http://localhost:5000/health` and `http://localhost:5000/api/health`
+- Frontend handoff: [docs/frontend-integration-guide.md](/home/lenovo/Desktop/placement-decode/server/docs/frontend-integration-guide.md)
 
 ## Flow
 
