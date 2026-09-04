@@ -85,7 +85,7 @@ const approveRegistration = asyncHandler(async (req, res) => {
   });
 
   const roles = await ensureOrganizationRoles(organization._id);
-  const temporaryPassword = generateTemporaryPassword();
+  const temporaryPassword = generateTemporaryPassword(registration.orgEmail);
 
   const admin = await User.create({
     organization: organization._id,

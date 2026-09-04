@@ -11,14 +11,16 @@ import Section from "./models/Section";
 import User from "./models/User";
 import { ensureDefaultFeatures } from "./services/feature.service";
 import { ensureOrganizationRoles, ensureRole } from "./services/rbac.service";
+import { generateTemporaryPassword } from "./utils/password";
 
-const dummyPassword = "Password123!";
+async function hashDefaultPassword(email: string) {
+  return bcrypt.hash(generateTemporaryPassword(email), 12);
+}
 
 async function seedDummyData() {
   await connectDB();
 
   await ensureDefaultFeatures();
-  const hashedPassword = await bcrypt.hash(dummyPassword, 12);
 
   const superadminRole = await ensureRole("superadmin", null, true);
   const superadmin = await User.findOneAndUpdate(
@@ -27,7 +29,7 @@ async function seedDummyData() {
       $setOnInsert: {
         name: "Dummy Super Admin",
         email: "superadmin@gmail.com",
-        password: hashedPassword,
+        password: await hashDefaultPassword("superadmin@gmail.com"),
         role: superadminRole._id,
         roleName: "superadmin",
         mustChangePassword: false,
@@ -116,7 +118,7 @@ async function seedDummyData() {
         name: "Demo Org Admin",
         email: "admin@gmail.com",
         phoneNumber: "+919900002222",
-        password: hashedPassword,
+        password: await hashDefaultPassword("admin@gmail.com"),
         role: roles.admin._id,
         roleName: "admin",
         createdBy: superadmin._id,
@@ -138,7 +140,7 @@ async function seedDummyData() {
           name: "Demo Teacher",
           email: "teacher@gmail.com",
           phoneNumber: "+919900003333",
-          password: hashedPassword,
+          password: await hashDefaultPassword("teacher@gmail.com"),
           role: roles.teacher._id,
           roleName: "teacher",
           createdBy: admin._id,
@@ -155,7 +157,7 @@ async function seedDummyData() {
           name: "Demo Student",
           email: "student@gmail.com",
           phoneNumber: "+919900004444",
-          password: hashedPassword,
+          password: await hashDefaultPassword("student@gmail.com"),
           role: roles.student._id,
           roleName: "student",
           createdBy: admin._id,
@@ -241,10 +243,10 @@ async function seedDummyData() {
 
   console.log("Dummy data seeded");
   console.log("Login users:");
-  console.log(`superadmin@gmail.com / ${dummyPassword}`);
-  console.log(`admin@gmail.com / ${dummyPassword}`);
-  console.log(`teacher@gmail.com / ${dummyPassword}`);
-  console.log(`student@gmail.com / ${dummyPassword}`);
+  console.log(`superadmin@gmail.com / ${generateTemporaryPassword("superadmin@gmail.com")}`);
+  console.log(`admin@gmail.com / ${generateTemporaryPassword("admin@gmail.com")}`);
+  console.log(`teacher@gmail.com / ${generateTemporaryPassword("teacher@gmail.com")}`);
+  console.log(`student@gmail.com / ${generateTemporaryPassword("student@gmail.com")}`);
   console.log(`Pending registration: ${pendingRegistration.orgEmail}`);
 
   process.exit(0);

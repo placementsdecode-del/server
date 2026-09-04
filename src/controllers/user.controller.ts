@@ -47,7 +47,7 @@ const createUser = asyncHandler(async (req, res) => {
   }
 
   const role = await ensureRole(roleName, organizationId);
-  const generatedPassword = password || generateTemporaryPassword();
+  const generatedPassword = password || generateTemporaryPassword(email);
 
   const user = await User.create({
     organization: organizationId,
