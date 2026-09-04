@@ -3,6 +3,17 @@ import type { Request, Response } from "express";
 import app from "../src/app";
 import connectDB from "../src/config/db";
 
+const publicRoutesWithoutDatabase = new Set([
+  "/",
+  "/health",
+  "/api/health",
+  "/openapi.json",
+  "/api-docs",
+  "/api-docs/",
+  "/api-docs/swagger-ui-init.js",
+  "/swagger-ui-init.js",
+]);
+
 function applyCorsHeaders(req: Request, res: Response) {
   const origin = req.headers.origin || "*";
 
@@ -24,7 +35,10 @@ export default async function handler(req: Request, res: Response) {
   }
 
   try {
-    await connectDB();
+    if (!publicRoutesWithoutDatabase.has(req.url || "")) {
+      await connectDB();
+    }
+
     return app(req, res);
   } catch (error) {
     console.error("Vercel handler failed:", error);

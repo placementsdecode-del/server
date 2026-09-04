@@ -26,6 +26,15 @@ app.options(/.*/, cors());
 app.use(express.json());
 app.use(morgan("dev"));
 
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "placement-decode-api",
+    docs: "/api-docs",
+    health: "/health",
+  });
+});
+
 app.get("/health", (req, res) => {
   res.json({ status: "ok", service: "placement-decode-api" });
 });
