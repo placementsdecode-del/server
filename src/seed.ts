@@ -21,21 +21,19 @@ async function seed() {
   const email = process.env.SUPERADMIN_EMAIL || "superadmin@gmail.com";
   const password = process.env.SUPERADMIN_PASSWORD || generateTemporaryPassword(email);
 
-  const superadmin = await User.findOneAndUpdate(
-    { email: email.toLowerCase() },
-    {
-      $set: {
-        name: process.env.SUPERADMIN_NAME || "Platform Super Admin",
-        email,
-        password,
-        role: superadminRole._id,
-        roleName: "superadmin",
-        mustChangePassword: false,
-        status: "active",
-      },
-    },
-    { upsert: true, new: true }
-  );
+  let superadmin: any = await User.findOne({ email: email.toLowerCase() }).select("+password");
+
+  if (!superadmin) {
+    superadmin = new User({ email });
+  }
+
+  superadmin.name = process.env.SUPERADMIN_NAME || "Platform Super Admin";
+  superadmin.password = password;
+  superadmin.role = superadminRole._id;
+  superadmin.roleName = "superadmin";
+  superadmin.mustChangePassword = false;
+  superadmin.status = "active";
+  await superadmin.save();
 
   await RegisterOrg.findOneAndUpdate(
     { orgEmail: "admin@gmail.com" },
