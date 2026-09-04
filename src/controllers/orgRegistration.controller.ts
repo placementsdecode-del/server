@@ -9,7 +9,7 @@ import asyncHandler from "../utils/asyncHandler";
 import { generateTemporaryPassword } from "../utils/password";
 
 const createRegistration = asyncHandler(async (req, res) => {
-  const { id, externalId, orgName, orgEmail, address, phoneNumber, requestedFeatures } = req.body;
+  const { externalId, orgName, orgEmail, address, location, phoneNumber, requestedFeatures } = req.body;
 
   if (!orgName || !orgEmail || !address || !phoneNumber) {
     throw new ApiError(400, "orgName, orgEmail, address, and phoneNumber are required");
@@ -18,10 +18,11 @@ const createRegistration = asyncHandler(async (req, res) => {
   const requestedFeatureIds = await resolveFeatureIds(requestedFeatures);
 
   const registration = await RegisterOrg.create({
-    externalId: externalId || id,
+    externalId,
     orgName,
     orgEmail,
     address,
+    location,
     phoneNumber,
     requestedFeatures: requestedFeatureIds,
   });
@@ -77,6 +78,7 @@ const approveRegistration = asyncHandler(async (req, res) => {
     orgName: registration.orgName,
     orgEmail: registration.orgEmail,
     address: registration.address,
+    location: registration.location,
     phoneNumber: registration.phoneNumber,
     features: selectedFeatures,
     acceptedBy: req.user._id,

@@ -25,6 +25,28 @@ const acceptedOrganizationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    location: {
+      country: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      state: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      city: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      postalCode: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+    },
     phoneNumber: {
       type: String,
       required: true,

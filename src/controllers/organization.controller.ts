@@ -37,7 +37,7 @@ const updateOrganization = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You can only update your own organization");
   }
 
-  const allowedFields = ["orgName", "orgEmail", "address", "phoneNumber", "features", "status"];
+  const allowedFields = ["orgName", "orgEmail", "address", "location", "phoneNumber", "features", "status"];
   const update: Record<string, unknown> = {};
 
   for (const field of allowedFields) {
