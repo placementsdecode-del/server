@@ -89,6 +89,19 @@ const openApiSpec: any = {
           name: { type: "string", example: "Jane Admin" },
           email: { type: "string", format: "email", example: "admin@example.com" },
           phoneNumber: { type: "string", example: "+919876543210" },
+          registrationNumber: { type: "string", example: "STU-2027-001" },
+          department: { type: "string", example: "Computer Science" },
+          batch: { type: "string", example: "2027" },
+          section: {
+            oneOf: [{ type: "string" }, { type: "object" }],
+            nullable: true,
+          },
+          groups: {
+            type: "array",
+            items: { type: "string" },
+            example: ["Coding Group"],
+          },
+          preparationScore: { type: "number", example: 72 },
           role: {
             oneOf: [{ type: "string" }, { $ref: "#/components/schemas/Role" }],
           },
@@ -113,6 +126,7 @@ const openApiSpec: any = {
           orgName: { type: "string", example: "Decode Institute" },
           orgEmail: { type: "string", format: "email", example: "admin@decode.edu" },
           address: { type: "string", example: "Sector 21, New Delhi" },
+          location: { $ref: "#/components/schemas/Location" },
           phoneNumber: { type: "string", example: "+919876543210" },
           requestedFeatures: {
             type: "array",
@@ -151,6 +165,7 @@ const openApiSpec: any = {
           orgName: { type: "string", example: "Decode Institute" },
           orgEmail: { type: "string", format: "email", example: "admin@decode.edu" },
           address: { type: "string", example: "Sector 21, New Delhi" },
+          location: { $ref: "#/components/schemas/Location" },
           phoneNumber: { type: "string", example: "+919876543210" },
           features: {
             type: "array",
@@ -426,11 +441,19 @@ const openApiSpec: any = {
                 type: "object",
                 required: ["orgName", "orgEmail", "address", "phoneNumber"],
                 properties: {
-                  id: { type: "string", example: "ORG-001" },
                   externalId: { type: "string", example: "ORG-001" },
                   orgName: { type: "string", example: "Decode Institute" },
                   orgEmail: { type: "string", format: "email", example: "admin@decode.edu" },
                   address: { type: "string", example: "Sector 21, New Delhi" },
+                  location: {
+                    type: "object",
+                    properties: {
+                      country: { type: "string", example: "India" },
+                      state: { type: "string", example: "Delhi" },
+                      city: { type: "string", example: "New Delhi" },
+                      postalCode: { type: "string", example: "110001" },
+                    },
+                  },
                   phoneNumber: { type: "string", example: "+919876543210" },
                   requestedFeatures: {
                     type: "array",
@@ -946,6 +969,411 @@ openApiSpec.components.parameters = {
     required: true,
     schema: { type: "string" },
   },
+  SectionId: {
+    name: "sectionId",
+    in: "path",
+    required: true,
+    schema: { type: "string" },
+  },
+  StudentId: {
+    name: "studentId",
+    in: "path",
+    required: true,
+    schema: { type: "string" },
+  },
+  UserId: {
+    name: "userId",
+    in: "path",
+    required: true,
+    schema: { type: "string" },
+  },
+  AssessmentId: {
+    name: "assessmentId",
+    in: "path",
+    required: true,
+    schema: { type: "string" },
+  },
 };
+
+openApiSpec.tags.push({ name: "Sections" }, { name: "Assessments" });
+
+Object.assign(openApiSpec.components.schemas, {
+  Location: {
+    type: "object",
+    properties: {
+      country: { type: "string", example: "India" },
+      state: { type: "string", example: "Karnataka" },
+      city: { type: "string", example: "Bengaluru" },
+      postalCode: { type: "string", example: "560001" },
+    },
+  },
+  Section: {
+    type: "object",
+    properties: {
+      _id: { type: "string", example: "66b4f25b6d6fa9f03f73e010" },
+      organization: { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AcceptedOrganization" }] },
+      name: { type: "string", example: "CSE Section A" },
+      code: { type: "string", example: "CSE-A-2027" },
+      department: { type: "string", example: "Computer Science" },
+      batch: { type: "string", example: "2027" },
+      academicYear: { type: "string", example: "2026-2027" },
+      assignedTeachers: {
+        type: "array",
+        items: { $ref: "#/components/schemas/User" },
+      },
+      status: { type: "string", enum: ["active", "inactive"], example: "active" },
+      description: { type: "string", example: "Placement preparation section." },
+      createdAt: { type: "string", format: "date-time" },
+      updatedAt: { type: "string", format: "date-time" },
+    },
+  },
+  AssessmentQuestion: {
+    type: "object",
+    required: ["type", "text", "marks"],
+    properties: {
+      _id: { type: "string", example: "66b4f25b6d6fa9f03f73e020" },
+      type: {
+        type: "string",
+        enum: ["single-choice", "multiple-choice", "true-false", "short-answer", "long-answer", "coding", "file-upload", "numerical"],
+        example: "single-choice",
+      },
+      text: { type: "string", example: "Which data structure is used for balanced parentheses?" },
+      options: {
+        type: "array",
+        items: { type: "string" },
+        example: ["Queue", "Stack", "Tree", "Graph"],
+      },
+      correctAnswer: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }, { type: "boolean" }, { type: "number" }], example: "Stack" },
+      explanation: { type: "string", example: "A stack tracks the most recent unmatched opening bracket." },
+      marks: { type: "number", example: 5 },
+      negativeMarks: { type: "number", example: 0 },
+    },
+  },
+  Assessment: {
+    type: "object",
+    properties: {
+      _id: { type: "string", example: "66b4f25b6d6fa9f03f73e030" },
+      organization: { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AcceptedOrganization" }] },
+      title: { type: "string", example: "Aptitude Practice Test" },
+      description: { type: "string", example: "Section-level aptitude assessment." },
+      category: { type: "string", example: "Aptitude" },
+      difficulty: { type: "string", enum: ["beginner", "intermediate", "advanced"], example: "intermediate" },
+      instructions: { type: "string", example: "Answer all questions before submitting." },
+      durationMinutes: { type: "number", example: 30 },
+      totalMarks: { type: "number", example: 10 },
+      passingMarks: { type: "number", example: 4 },
+      attemptsAllowed: { type: "number", example: 1 },
+      negativeMarking: { type: "boolean", example: false },
+      shuffleQuestions: { type: "boolean", example: false },
+      shuffleOptions: { type: "boolean", example: false },
+      showResultImmediately: { type: "boolean", example: true },
+      allowAnswerReview: { type: "boolean", example: true },
+      assignedSections: {
+        type: "array",
+        items: { $ref: "#/components/schemas/Section" },
+      },
+      assignedTeachers: {
+        type: "array",
+        items: { $ref: "#/components/schemas/User" },
+      },
+      questions: {
+        type: "array",
+        items: { $ref: "#/components/schemas/AssessmentQuestion" },
+      },
+      status: { type: "string", enum: ["draft", "scheduled", "active", "completed", "archived"], example: "draft" },
+      createdAt: { type: "string", format: "date-time" },
+      updatedAt: { type: "string", format: "date-time" },
+    },
+  },
+});
+
+Object.assign(openApiSpec.paths, {
+  "/api/auth/password": {
+    patch: {
+      tags: ["Auth"],
+      summary: "Change current user's password",
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["currentPassword", "newPassword"],
+              properties: {
+                currentPassword: { type: "string", example: "admin@123" },
+                newPassword: { type: "string", minLength: 8, example: "NewPassword123!" },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Password changed",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+      },
+    },
+  },
+  "/api/organizations/{organizationId}": {
+    ...openApiSpec.paths["/api/organizations/{organizationId}"],
+    patch: {
+      tags: ["Organizations"],
+      summary: "Update accepted organization",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ $ref: "#/components/parameters/OrganizationId" }],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                orgName: { type: "string", example: "Decode Institute" },
+                orgEmail: { type: "string", format: "email", example: "admin@decode.edu" },
+                address: { type: "string", example: "Sector 21, New Delhi" },
+                location: { $ref: "#/components/schemas/Location" },
+                phoneNumber: { type: "string", example: "+919876543210" },
+                status: { type: "string", enum: ["active", "suspended"], example: "active" },
+                features: { type: "array", items: { type: "string" } },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Organization updated",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, organization: { $ref: "#/components/schemas/AcceptedOrganization" } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+        404: { $ref: "#/components/responses/NotFound" },
+      },
+    },
+  },
+  "/api/users/{userId}": {
+    patch: {
+      tags: ["Users"],
+      summary: "Update user details, role, status, or password",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ $ref: "#/components/parameters/UserId" }],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                name: { type: "string", example: "Demo Student" },
+                email: { type: "string", format: "email", example: "student@gmail.com" },
+                phoneNumber: { type: "string", example: "+919900004444" },
+                roleName: { type: "string", enum: ["admin", "teacher", "student"], example: "student" },
+                status: { type: "string", enum: ["active", "inactive"], example: "active" },
+                registrationNumber: { type: "string", example: "STU-2027-001" },
+                department: { type: "string", example: "Computer Science" },
+                batch: { type: "string", example: "2027" },
+                section: { type: "string", example: "66b4f25b6d6fa9f03f73e010" },
+                groups: { type: "array", items: { type: "string" }, example: ["Coding Group"] },
+                preparationScore: { type: "number", example: 72 },
+                password: { type: "string", example: "student@123" },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "User updated",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, user: { $ref: "#/components/schemas/User" } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+        404: { $ref: "#/components/responses/NotFound" },
+      },
+    },
+  },
+  "/api/sections": {
+    get: {
+      tags: ["Sections"],
+      summary: "List sections",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: "organization", in: "query", schema: { type: "string" } }],
+      responses: {
+        200: {
+          description: "Section list",
+          content: { "application/json": { schema: { type: "object", properties: { sections: { type: "array", items: { $ref: "#/components/schemas/Section" } } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+      },
+    },
+    post: {
+      tags: ["Sections"],
+      summary: "Create section",
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["name", "code", "department", "batch", "academicYear"],
+              properties: {
+                organization: { type: "string", description: "Required for superadmin.", example: "66b4f25b6d6fa9f03f73e003" },
+                name: { type: "string", example: "CSE Section A" },
+                code: { type: "string", example: "CSE-A-2027" },
+                department: { type: "string", example: "Computer Science" },
+                batch: { type: "string", example: "2027" },
+                academicYear: { type: "string", example: "2026-2027" },
+                assignedTeachers: { type: "array", items: { type: "string" } },
+                status: { type: "string", enum: ["active", "inactive"], example: "active" },
+                description: { type: "string", example: "Placement preparation section." },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          description: "Section created",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, section: { $ref: "#/components/schemas/Section" } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+      },
+    },
+  },
+  "/api/sections/{sectionId}": {
+    patch: {
+      tags: ["Sections"],
+      summary: "Update section or assigned teachers",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ $ref: "#/components/parameters/SectionId" }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Section" } } },
+      },
+      responses: {
+        200: {
+          description: "Section updated",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, section: { $ref: "#/components/schemas/Section" } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+        404: { $ref: "#/components/responses/NotFound" },
+      },
+    },
+  },
+  "/api/sections/{sectionId}/students/{studentId}": {
+    post: {
+      tags: ["Sections"],
+      summary: "Assign student to section",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ $ref: "#/components/parameters/SectionId" }, { $ref: "#/components/parameters/StudentId" }],
+      responses: {
+        200: {
+          description: "Student assigned",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, student: { $ref: "#/components/schemas/User" } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+        404: { $ref: "#/components/responses/NotFound" },
+      },
+    },
+  },
+  "/api/assessments": {
+    get: {
+      tags: ["Assessments"],
+      summary: "List assessments",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: "organization", in: "query", schema: { type: "string" } }],
+      responses: {
+        200: {
+          description: "Assessment list",
+          content: { "application/json": { schema: { type: "object", properties: { assessments: { type: "array", items: { $ref: "#/components/schemas/Assessment" } } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+      },
+    },
+    post: {
+      tags: ["Assessments"],
+      summary: "Create assessment",
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Assessment" } } },
+      },
+      responses: {
+        201: {
+          description: "Assessment created",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, assessment: { $ref: "#/components/schemas/Assessment" } } } } },
+        },
+        400: { $ref: "#/components/responses/NotFound" },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+      },
+    },
+  },
+  "/api/assessments/validate": {
+    post: {
+      tags: ["Assessments"],
+      summary: "Validate assessment payload",
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Assessment" } } },
+      },
+      responses: {
+        200: {
+          description: "Validation result",
+          content: { "application/json": { schema: { type: "object", properties: { valid: { type: "boolean" }, errors: { type: "array", items: { type: "string" } } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+      },
+    },
+  },
+  "/api/assessments/{assessmentId}": {
+    patch: {
+      tags: ["Assessments"],
+      summary: "Update assessment",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ $ref: "#/components/parameters/AssessmentId" }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Assessment" } } },
+      },
+      responses: {
+        200: {
+          description: "Assessment updated",
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, assessment: { $ref: "#/components/schemas/Assessment" } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+        404: { $ref: "#/components/responses/NotFound" },
+      },
+    },
+  },
+  "/api/assessments/{assessmentId}/validate": {
+    post: {
+      tags: ["Assessments"],
+      summary: "Validate existing assessment",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ $ref: "#/components/parameters/AssessmentId" }],
+      responses: {
+        200: {
+          description: "Validation result",
+          content: { "application/json": { schema: { type: "object", properties: { valid: { type: "boolean" }, errors: { type: "array", items: { type: "string" } } } } } },
+        },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+        404: { $ref: "#/components/responses/NotFound" },
+      },
+    },
+  },
+});
 
 export default openApiSpec;

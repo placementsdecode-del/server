@@ -26,7 +26,7 @@ async function seedDummyData() {
   const superadmin = await User.findOneAndUpdate(
     { email: "superadmin@gmail.com" },
     {
-      $setOnInsert: {
+      $set: {
         name: "Dummy Super Admin",
         email: "superadmin@gmail.com",
         password: await hashDefaultPassword("superadmin@gmail.com"),
@@ -113,7 +113,7 @@ async function seedDummyData() {
   const admin = await User.findOneAndUpdate(
     { email: "admin@gmail.com" },
     {
-      $setOnInsert: {
+      $set: {
         organization: organization._id,
         name: "Demo Org Admin",
         email: "admin@gmail.com",
@@ -135,7 +135,7 @@ async function seedDummyData() {
     User.findOneAndUpdate(
       { email: "teacher@gmail.com" },
       {
-        $setOnInsert: {
+        $set: {
           organization: organization._id,
           name: "Demo Teacher",
           email: "teacher@gmail.com",
@@ -152,7 +152,7 @@ async function seedDummyData() {
     User.findOneAndUpdate(
       { email: "student@gmail.com" },
       {
-        $setOnInsert: {
+        $set: {
           organization: organization._id,
           name: "Demo Student",
           email: "student@gmail.com",
