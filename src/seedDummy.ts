@@ -4,8 +4,10 @@ import bcrypt from "bcryptjs";
 
 import connectDB from "./config/db";
 import AcceptedOrganization from "./models/AcceptedOrganization";
+import Assessment from "./models/Assessment";
 import Feature from "./models/Feature";
 import RegisterOrg from "./models/RegisterOrg";
+import Section from "./models/Section";
 import User from "./models/User";
 import { ensureDefaultFeatures } from "./services/feature.service";
 import { ensureOrganizationRoles, ensureRole } from "./services/rbac.service";
@@ -20,11 +22,11 @@ async function seedDummyData() {
 
   const superadminRole = await ensureRole("superadmin", null, true);
   const superadmin = await User.findOneAndUpdate(
-    { email: "superadmin@placementdecode.test" },
+    { email: "superadmin@gmail.com" },
     {
       $setOnInsert: {
         name: "Dummy Super Admin",
-        email: "superadmin@placementdecode.test",
+        email: "superadmin@gmail.com",
         password: hashedPassword,
         role: superadminRole._id,
         roleName: "superadmin",
@@ -60,7 +62,7 @@ async function seedDummyData() {
       $setOnInsert: {
         externalId: "DUMMY-ACCEPTED-ORG",
         orgName: "Accepted Demo University",
-        orgEmail: "admin@accepted-demo.test",
+        orgEmail: "admin@gmail.com",
         address: "Demo Tech Park, Pune",
         phoneNumber: "+919900002222",
         requestedFeatures: selectedFeatures.map((feature) => feature._id),
@@ -94,12 +96,12 @@ async function seedDummyData() {
   const roles = await ensureOrganizationRoles(organization._id);
 
   const admin = await User.findOneAndUpdate(
-    { email: "admin@accepted-demo.test" },
+    { email: "admin@gmail.com" },
     {
       $setOnInsert: {
         organization: organization._id,
         name: "Demo Org Admin",
-        email: "admin@accepted-demo.test",
+        email: "admin@gmail.com",
         phoneNumber: "+919900002222",
         password: hashedPassword,
         role: roles.admin._id,
@@ -116,12 +118,12 @@ async function seedDummyData() {
 
   await Promise.all([
     User.findOneAndUpdate(
-      { email: "teacher@accepted-demo.test" },
+      { email: "teacher@gmail.com" },
       {
         $setOnInsert: {
           organization: organization._id,
           name: "Demo Teacher",
-          email: "teacher@accepted-demo.test",
+          email: "teacher@gmail.com",
           phoneNumber: "+919900003333",
           password: hashedPassword,
           role: roles.teacher._id,
@@ -133,12 +135,12 @@ async function seedDummyData() {
       { upsert: true, new: true }
     ),
     User.findOneAndUpdate(
-      { email: "student@accepted-demo.test" },
+      { email: "student@gmail.com" },
       {
         $setOnInsert: {
           organization: organization._id,
           name: "Demo Student",
-          email: "student@accepted-demo.test",
+          email: "student@gmail.com",
           phoneNumber: "+919900004444",
           password: hashedPassword,
           role: roles.student._id,
@@ -151,15 +153,85 @@ async function seedDummyData() {
     ),
   ]);
 
+  const teacher = await User.findOne({ email: "teacher@gmail.com" });
+  const student = await User.findOne({ email: "student@gmail.com" });
+
+  const section = await Section.findOneAndUpdate(
+    { organization: organization._id, code: "CSE-A-2027" },
+    {
+      $setOnInsert: {
+        organization: organization._id,
+        name: "CSE Section A",
+        code: "CSE-A-2027",
+        department: "Computer Science",
+        batch: "2027",
+        academicYear: "2026-2027",
+        assignedTeachers: teacher ? [teacher._id] : [],
+        status: "active",
+        description: "Demo section for placement preparation testing.",
+      },
+    },
+    { upsert: true, new: true }
+  );
+
+  if (student) {
+    student.registrationNumber = "STU-2027-001";
+    student.department = "Computer Science";
+    student.batch = "2027";
+    student.section = section._id;
+    student.groups = ["Coding Group"];
+    student.preparationScore = 72;
+    await student.save();
+  }
+
+  await Assessment.findOneAndUpdate(
+    { organization: organization._id, title: "Demo Aptitude Assessment" },
+    {
+      $setOnInsert: {
+        organization: organization._id,
+        title: "Demo Aptitude Assessment",
+        description: "Validated demo assessment for the admin workflow.",
+        category: "Aptitude",
+        difficulty: "intermediate",
+        instructions: "Answer all questions before submitting.",
+        durationMinutes: 30,
+        totalMarks: 10,
+        passingMarks: 4,
+        attemptsAllowed: 1,
+        assignedSections: [section._id],
+        assignedTeachers: teacher ? [teacher._id] : [],
+        questions: [
+          {
+            type: "single-choice",
+            text: "If 12 students finish a task in 4 hours, how many student-hours were used?",
+            options: ["16", "24", "48", "72"],
+            correctAnswer: "48",
+            marks: 5,
+          },
+          {
+            type: "true-false",
+            text: "Aptitude assessments can be assigned to a section.",
+            options: [],
+            correctAnswer: true,
+            marks: 5,
+          },
+        ],
+        status: "draft",
+        createdBy: admin._id,
+      },
+    },
+    { upsert: true, new: true }
+  );
+
   acceptedRegistration.acceptedOrganization = organization._id;
   await acceptedRegistration.save();
 
   console.log("Dummy data seeded");
   console.log("Login users:");
-  console.log(`superadmin@placementdecode.test / ${dummyPassword}`);
-  console.log(`admin@accepted-demo.test / ${dummyPassword}`);
-  console.log(`teacher@accepted-demo.test / ${dummyPassword}`);
-  console.log(`student@accepted-demo.test / ${dummyPassword}`);
+  console.log(`superadmin@gmail.com / ${dummyPassword}`);
+  console.log(`admin@gmail.com / ${dummyPassword}`);
+  console.log(`teacher@gmail.com / ${dummyPassword}`);
+  console.log(`student@gmail.com / ${dummyPassword}`);
   console.log(`Pending registration: ${pendingRegistration.orgEmail}`);
 
   process.exit(0);

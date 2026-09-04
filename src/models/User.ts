@@ -31,6 +31,36 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    registrationNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    department: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    batch: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    section: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Section",
+      default: null,
+    },
+    groups: {
+      type: [String],
+      default: [],
+    },
+    preparationScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
     role: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",

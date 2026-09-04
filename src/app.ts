@@ -5,10 +5,12 @@ import morgan from "morgan";
 import openApiSpec from "./docs/openapi";
 import { errorHandler, notFound } from "./middleware/error";
 import authRoutes from "./routes/auth.routes";
+import assessmentRoutes from "./routes/assessment.routes";
 import featureRoutes from "./routes/feature.routes";
 import orgRegistrationRoutes from "./routes/orgRegistration.routes";
 import organizationRoutes from "./routes/organization.routes";
 import roleRoutes from "./routes/role.routes";
+import sectionRoutes from "./routes/section.routes";
 import userRoutes from "./routes/user.routes";
 
 const app = express();
@@ -82,10 +84,12 @@ app.get(/^\/api-docs\/?$/, (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/assessments", assessmentRoutes);
 app.use("/api/features", featureRoutes);
 app.use("/api/org-registrations", orgRegistrationRoutes);
 app.use("/api/organizations", organizationRoutes);
 app.use("/api/roles", roleRoutes);
+app.use("/api/sections", sectionRoutes);
 app.use("/api/users", userRoutes);
 
 app.use(notFound);

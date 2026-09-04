@@ -30,4 +30,38 @@ const getOrganization = asyncHandler(async (req, res) => {
   res.json({ organization });
 });
 
-export { listOrganizations, getOrganization };
+const updateOrganization = asyncHandler(async (req, res) => {
+  const organizationId = req.params.organizationId;
+
+  if (req.user.roleName !== "superadmin" && req.user.organization.toString() !== organizationId) {
+    throw new ApiError(403, "You can only update your own organization");
+  }
+
+  const allowedFields = ["orgName", "orgEmail", "address", "phoneNumber", "features", "status"];
+  const update: Record<string, unknown> = {};
+
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      update[field] = req.body[field];
+    }
+  }
+
+  if (update.status && !["active", "suspended"].includes(String(update.status))) {
+    throw new ApiError(400, "status must be active or suspended");
+  }
+
+  const organization = await AcceptedOrganization.findByIdAndUpdate(organizationId, update, {
+    new: true,
+    runValidators: true,
+  })
+    .populate("features")
+    .populate("adminUser", "name email roleName");
+
+  if (!organization) {
+    throw new ApiError(404, "Organization not found");
+  }
+
+  res.json({ message: "Organization updated", organization });
+});
+
+export { listOrganizations, getOrganization, updateOrganization };
