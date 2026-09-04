@@ -46,7 +46,21 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/openapi.json", (req, res) => {
-  res.json(openApiSpec);
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const protocol = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto || req.protocol;
+  const host = req.get("host");
+
+  res.json({
+    ...openApiSpec,
+    servers: host
+      ? [
+          {
+            url: `${protocol}://${host}`,
+            description: "Current deployment",
+          },
+        ]
+      : openApiSpec.servers,
+  });
 });
 
 app.get(["/api-docs/swagger-ui-init.js", "/swagger-ui-init.js"], (req, res) => {
