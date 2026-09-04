@@ -273,7 +273,7 @@ const openApiSpec: any = {
                 type: "object",
                 required: ["email", "password"],
                 properties: {
-                  email: { type: "string", format: "email", example: "superadmin@example.com" },
+                  email: { type: "string", format: "email", example: "me@gmail.com" },
                   password: { type: "string", example: "ChangeMe123!" },
                 },
               },
@@ -1012,7 +1012,7 @@ Object.assign(openApiSpec.components.schemas, {
     properties: {
       _id: { type: "string", example: "66b4f25b6d6fa9f03f73e010" },
       organization: { oneOf: [{ type: "string" }, { $ref: "#/components/schemas/AcceptedOrganization" }] },
-      name: { type: "string", example: "CSE Section A" },
+      name: { type: "string", example: "Computer Science Section" },
       code: { type: "string", example: "CSE-A-2027" },
       department: { type: "string", example: "Computer Science" },
       batch: { type: "string", example: "2027" },
@@ -1168,7 +1168,7 @@ Object.assign(openApiSpec.paths, {
               type: "object",
               properties: {
                 name: { type: "string", example: "Demo Student" },
-                email: { type: "string", format: "email", example: "student@gmail.com" },
+                email: { type: "string", format: "email", example: "student@example.com" },
                 phoneNumber: { type: "string", example: "+919900004444" },
                 roleName: { type: "string", enum: ["admin", "teacher", "student"], example: "student" },
                 status: { type: "string", enum: ["active", "inactive"], example: "active" },
@@ -1223,7 +1223,7 @@ Object.assign(openApiSpec.paths, {
               required: ["name", "code", "department", "batch", "academicYear"],
               properties: {
                 organization: { type: "string", description: "Required for superadmin.", example: "66b4f25b6d6fa9f03f73e003" },
-                name: { type: "string", example: "CSE Section A" },
+                name: { type: "string", example: "Computer Science Section" },
                 code: { type: "string", example: "CSE-A-2027" },
                 department: { type: "string", example: "Computer Science" },
                 batch: { type: "string", example: "2027" },

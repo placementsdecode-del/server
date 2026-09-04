@@ -11,8 +11,6 @@
     "start": "node dist/src/server.js",
     "dev": "tsx watch src/server.ts",
     "seed": "tsx src/seed.ts",
-    "seed:dummy": "tsx src/seedDummy.ts",
-    "cleanup:dummy": "tsx src/cleanupDummyData.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {

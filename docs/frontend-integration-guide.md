@@ -58,7 +58,7 @@ Request:
 
 ```json
 {
-  "email": "superadmin@example.com",
+  "email": "superadmin@gmail.com",
   "password": "ChangeMe123!"
 }
 ```
@@ -71,7 +71,7 @@ Response:
   "user": {
     "id": "userId",
     "name": "Platform Super Admin",
-    "email": "superadmin@example.com",
+    "email": "superadmin@gmail.com",
     "role": "superadmin",
     "permissions": ["features:manage", "organizations:review"],
     "organization": null,

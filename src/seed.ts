@@ -1,7 +1,6 @@
 import "dotenv/config";
 
 import connectDB from "./config/db";
-import RegisterOrg from "./models/RegisterOrg";
 import User from "./models/User";
 import { ensureDefaultFeatures } from "./services/feature.service";
 import { ensureRole } from "./services/rbac.service";
@@ -35,31 +34,8 @@ async function seed() {
   superadmin.status = "active";
   await superadmin.save();
 
-  await RegisterOrg.findOneAndUpdate(
-    { orgEmail: "admin@gmail.com" },
-    {
-      $setOnInsert: {
-        orgName: "Dev Test Organization",
-        orgEmail: "admin@gmail.com",
-        address: "Dev Campus, Bengaluru",
-        location: {
-          country: "India",
-          state: "Karnataka",
-          city: "Bengaluru",
-          postalCode: "560001",
-        },
-        phoneNumber: "+919900002222",
-        status: "pending",
-        discussionNotes: "Created by seed for superadmin approval testing.",
-        reviewedBy: superadmin._id,
-      },
-    },
-    { upsert: true, new: true }
-  );
-
   console.log("Seed complete");
   console.log(`Superadmin: ${email} / ${password}`);
-  console.log("Pending organization: Dev Test Organization / admin@gmail.com");
   process.exit(0);
 }
 

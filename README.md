@@ -8,7 +8,6 @@ Express + MongoDB API for organization onboarding, approval, features, and RBAC 
 cp .env.example .env
 npm install
 npm run seed
-npm run seed:dummy
 npm run dev
 ```
 
