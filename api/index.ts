@@ -42,8 +42,11 @@ export default async function handler(req: Request, res: Response) {
     return app(req, res);
   } catch (error) {
     console.error("Vercel handler failed:", error);
+    const message = error instanceof Error ? error.message : "Unknown startup error";
+
     return res.status(500).json({
       message: "Server failed before request handling",
+      error: process.env.NODE_ENV === "production" && message !== "MONGODB_URI is required" ? "Database connection failed" : message,
     });
   }
 }
