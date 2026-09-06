@@ -111,6 +111,8 @@ const assessmentSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    publishedAt: { type: Date, default: null },
+    notificationRecipients: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     assignedSections: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -141,4 +143,5 @@ const assessmentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+assessmentSchema.index({ organization: 1, notificationRecipients: 1 });
 export default mongoose.model("Assessment", assessmentSchema);

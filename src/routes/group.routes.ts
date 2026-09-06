@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { requireAuth, requireRoles } from "../middleware/auth";
+import { listGroups, listInvitations, createGroup, inviteStudents, respondToInvitation } from "../controllers/group.controller";
+const router = Router();
+router.use(requireAuth);
+router.get("/", requireRoles("admin", "teacher", "student"), listGroups);
+router.get("/invitations", requireRoles("student"), listInvitations);
+router.post("/", requireRoles("admin", "teacher"), createGroup);
+router.post("/:groupId/invitations", requireRoles("admin", "teacher"), inviteStudents);
+router.patch("/:groupId/invitations/me", requireRoles("student"), respondToInvitation);
+export default router;

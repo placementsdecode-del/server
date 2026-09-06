@@ -1,3 +1,4 @@
+import { communityPaths } from "./community.openapi";
 const openApiSpec: any = {
   openapi: "3.0.3",
   info: {
@@ -1388,5 +1389,8 @@ Object.assign(openApiSpec.paths, {
     },
   },
 });
+
+Object.assign(openApiSpec.paths, communityPaths);
+openApiSpec.tags.push(...["Student Community", "Notifications", "Groups", "Assigned Work"].map(name => ({ name })));
 
 export default openApiSpec;

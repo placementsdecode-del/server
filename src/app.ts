@@ -1,3 +1,7 @@
+import readinessRoutes from "./routes/readiness.routes";
+import communityRoutes from "./routes/community.routes";
+import groupRoutes from "./routes/group.routes";
+import workRoutes from "./routes/work.routes";
 import cors from "cors";
 import express from "express";
 import morgan from "morgan";
@@ -25,7 +29,7 @@ app.use(
   })
 );
 app.options(/.*/, cors());
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
 
 app.get("/", (req, res) => {
@@ -105,6 +109,12 @@ app.use("/api/organizations", organizationRoutes);
 app.use("/api/roles", roleRoutes);
 app.use("/api/sections", sectionRoutes);
 app.use("/api/users", userRoutes);
+
+app.use("/api/community", communityRoutes);
+app.use("/api/groups", groupRoutes);
+app.use("/api/work", workRoutes);
+
+app.use("/api/readiness", readinessRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -1,0 +1,12 @@
+import { Router } from "express";
+import { requireAuth, requireRoles } from "../middleware/auth";
+import { mySection, myWork, listNotifications, updateNotification, deleteNotification, markAllRead } from "../controllers/community.controller";
+const router = Router();
+router.use(requireAuth, requireRoles("student"));
+router.get("/section", mySection);
+router.get("/work", myWork);
+router.get("/notifications", listNotifications);
+router.patch("/notifications/read-all", markAllRead);
+router.patch("/notifications/:notificationId", updateNotification);
+router.delete("/notifications/:notificationId", deleteNotification);
+export default router;
