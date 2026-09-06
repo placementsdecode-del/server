@@ -4,10 +4,14 @@ const groupSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 120 },
   description: { type: String, default: "", trim: true, maxlength: 2000 },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  kind: { type: String, enum: ["discussion", "practice"], default: "discussion" },
+  mode: { type: String, default: "Group Discussion", maxlength: 100 },
+  coordinators: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   participants: [{
     student: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     status: { type: String, enum: ["pending", "accepted", "declined"], default: "pending" },
     invitedAt: { type: Date, default: Date.now },
+    lastReadAt: { type: Date, default: null },
     respondedAt: { type: Date, default: null },
   }],
 }, { timestamps: true });

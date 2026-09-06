@@ -69,6 +69,15 @@ async function main() {
     const path = `/readiness/attempts/${attempt.ledgerId}/${attempt.id}`;
     await request(alice, path + '/answers', 'PATCH', { answers: ['Stack'] });
     const completed = await request(alice, path + '/submit', 'POST', { answers: ['Stack'], score: 100 }); assert.equal(completed.attempt.score, 10);
+    const reviews = await request(teacher, '/readiness/reviews');
+    const visible = reviews.attempts.find(a => a.id === attempt.id);
+    assert.ok(visible, 'Automatically graded submissions must remain visible to teachers');
+    assert.equal(visible.assessmentId, assessment._id); assert.equal(visible.correctAnswers, 1);
+    assert.equal(visible.passingMarks, 7); assert.equal(visible.marks[0], 10); assert.ok(visible.timeSpentSeconds >= 0);
+    assert.equal(visible.questions[0].correctAnswer, 'Stack');
+    assert.equal((await request(outsider, '/readiness/leaderboard')).rows.length, 0);
+    const rankings = await request(alice, '/readiness/leaderboard');
+    assert.equal(rankings.rows[0].name, 'Alice'); assert.equal(rankings.rows[0].score, 100);
     const duplicate = await request(alice, path + '/submit', 'POST', { answers: ['Queue'] }); assert.equal(duplicate.attempt.score, 10);
     const second = (await request(alice, `/readiness/assessments/${assessment._id}/start`, 'POST')).attempt;
     await request(alice, `/readiness/attempts/${second.ledgerId}/${second.id}/answers`, 'PATCH', { answers: ['Stack'] });

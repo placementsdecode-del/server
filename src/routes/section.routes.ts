@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import {
-  assignStudentToSection,
+  addCohortMember, removeCohortMember, assignStudentToSection,
   removeStudentFromSection,
   createSection,
   listSections,
@@ -18,4 +18,6 @@ router.post("/:sectionId/students/:studentId", requireAuth, requireRoles("supera
 
 router.delete("/:sectionId/students/:studentId", requireAuth, requireRoles("superadmin", "admin", "teacher"), removeStudentFromSection);
 
+router.post('/:sectionId/members/:studentId', requireAuth, requireRoles('admin', 'teacher'), addCohortMember);
+router.delete('/:sectionId/members/:studentId', requireAuth, requireRoles('admin', 'teacher'), removeCohortMember);
 export default router;

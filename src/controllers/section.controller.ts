@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Section from "../models/Section";
 import User from "../models/User";
 import ApiError from "../utils/apiError";
@@ -33,6 +34,7 @@ const createSection = asyncHandler(async (req, res) => {
     throw new ApiError(400, "name, code, department, batch, and academicYear are required");
   }
 
+  await validateCoordinators(assignedTeachers, organization);
   const section = await Section.create({
     organization,
     name,
@@ -59,6 +61,7 @@ const updateSection = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You can only update your own organization sections");
   }
 
+  if (req.body.assignedTeachers !== undefined) await validateCoordinators(req.body.assignedTeachers, section.organization);
   const allowedFields = ["name", "code", "department", "batch", "academicYear", "assignedTeachers", "description", "status"];
 
   for (const field of allowedFields) {
@@ -129,3 +132,25 @@ const removeStudentFromSection = asyncHandler(async (req, res) => {
 });
 
 export { removeStudentFromSection, assignStudentToSection, createSection, listSections, updateSection };
+
+async function validateCoordinators(ids, organization) {
+  if (!Array.isArray(ids) || ids.length > 50 || ids.some(id => !mongoose.isValidObjectId(id))) throw new ApiError(400, 'Choose valid coordinator IDs');
+  const unique = [...new Set(ids.map(String))];
+  const count = await User.countDocuments({ _id: { $in: unique }, organization, roleName: { $in: ['teacher', 'admin'] }, status: 'active' });
+  if (count !== unique.length) throw new ApiError(400, 'Coordinators must be active faculty in this organization');
+}
+
+export const addCohortMember = asyncHandler(async (req, res) => {
+  const cohort = await Section.findOne({ _id: req.params.sectionId, organization: req.user.organization, status: 'active', ...(req.user.roleName === 'teacher' ? { assignedTeachers: req.user._id } : {}) });
+  if (!cohort) throw new ApiError(403, 'Choose an active cohort you coordinate');
+  const result = await User.updateOne({ _id: req.params.studentId, organization: req.user.organization, roleName: 'student', status: 'active' }, { $addToSet: { cohorts: cohort._id } });
+  if (!result.matchedCount) throw new ApiError(404, 'Active student not found');
+  res.json({ message: 'Student added to cohort' });
+});
+export const removeCohortMember = asyncHandler(async (req, res) => {
+  const cohort = await Section.findOne({ _id: req.params.sectionId, organization: req.user.organization, ...(req.user.roleName === 'teacher' ? { assignedTeachers: req.user._id } : {}) });
+  if (!cohort) throw new ApiError(403, 'Choose a cohort you coordinate');
+  await User.updateOne({ _id: req.params.studentId, organization: req.user.organization, roleName: 'student' }, { $pull: { cohorts: cohort._id } });
+  await User.updateOne({ _id: req.params.studentId, organization: req.user.organization, section: cohort._id }, { $set: { section: null } });
+  res.json({ message: 'Student removed from cohort' });
+});

@@ -1,3 +1,4 @@
+import { leaderboard } from '../controllers/leaderboard.controller';
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { requireAuth, requireRoles } from '../middleware/auth';
@@ -8,6 +9,7 @@ const router = Router();
 router.use(requireAuth, requireRoles('admin', 'teacher', 'student'));
 for (const name of ['studentId', 'assessmentId', 'ledgerId', 'attemptId']) router.param(name, (_req, _res, next, value) => next(mongoose.isValidObjectId(value) ? undefined : new ApiError(400, `Invalid ${name}`)));
 const staff = requireRoles('admin', 'teacher'), student = requireRoles('student');
+router.get('/leaderboard', leaderboard);
 router.get('/policies', progress.listPolicies);
 router.post('/policies', staff, progress.createPolicy);
 router.get('/me', student, progress.studentReport);

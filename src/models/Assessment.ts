@@ -71,6 +71,7 @@ const assessmentSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    rubric: { type: String, default: "", maxlength: 5000 },
     durationMinutes: {
       type: Number,
       min: 1,
@@ -113,6 +114,7 @@ const assessmentSchema = new mongoose.Schema(
     },
     publishedAt: { type: Date, default: null },
     notificationRecipients: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    assignedGroups: [{ type: mongoose.Schema.Types.ObjectId, ref: "Group" }],
     assignedSections: [
       {
         type: mongoose.Schema.Types.ObjectId,

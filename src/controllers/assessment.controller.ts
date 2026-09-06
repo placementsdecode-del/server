@@ -1,4 +1,6 @@
-import { sectionAudience } from "../services/audience.service";
+import Section from "../models/Section";
+import Group from "../models/Group";
+import { assessmentAudience } from "../services/audience.service";
 import Assessment from "../models/Assessment";
 import ApiError from "../utils/apiError";
 import asyncHandler from "../utils/asyncHandler";
@@ -58,7 +60,10 @@ const listAssessments = asyncHandler(async (req, res) => {
     throw new ApiError(400, "organization is required");
   }
 
-  const assessments = await Assessment.find({ organization, ...(req.user.roleName === "teacher" ? { createdBy: req.user._id } : {}) })
+  const sections = req.user.roleName === 'teacher' ? await Section.find({ organization, assignedTeachers: req.user._id }).select('_id') : [];
+  const groups = req.user.roleName === 'teacher' ? await Group.find({ organization, $or: [{ createdBy: req.user._id }, { coordinators: req.user._id }], kind: { $ne: 'practice' } }).select('_id') : [];
+  const assessments = await Assessment.find({ organization, ...(req.user.roleName === "teacher" ? { $or: [{ createdBy: req.user._id }, { assignedTeachers: req.user._id }, { assignedSections: { $in: sections.map(s => s._id) } }, { assignedGroups: { $in: groups.map(g => g._id) } }] } : {}) })
+    .populate("assignedGroups", "name")
     .populate("assignedSections", "name code")
     .populate("assignedTeachers", "name email roleName")
     .sort({ createdAt: -1 });
@@ -79,8 +84,8 @@ const createAssessment = asyncHandler(async (req, res) => {
     throw new ApiError(400, validationErrors.join("; "));
   }
 
-  const audience = req.body.assignedSections?.length ? await sectionAudience(req.user, organization, req.body.assignedSections) : [];
-  if (["active", "scheduled"].includes(req.body.status) && !req.body.assignedSections?.length) throw new ApiError(400, "Assign a section before publishing");
+  const audience = await assessmentAudience(req.user, organization, req.body.assignedSections || [], req.body.assignedGroups || []);
+  if (["active", "scheduled"].includes(req.body.status) && !req.body.assignedSections?.length && !req.body.assignedGroups?.length) throw new ApiError(400, "Assign a cohort or group before publishing");
   const assessment = await Assessment.create({
     ...req.body,
     organization,
@@ -105,12 +110,13 @@ const updateAssessment = asyncHandler(async (req, res) => {
 
   if (req.user.roleName === "teacher" && assessment.createdBy.toString() !== req.user._id.toString()) throw new ApiError(403, "You can only update assessments you created");
   const wasPublished = assessment.notificationRecipients.length > 0 || ["active", "scheduled", "completed"].includes(assessment.status);
-  if (wasPublished && ["questions", "category", "difficulty", "totalMarks", "durationMinutes", "negativeMarking"].some(field => req.body[field] !== undefined)) throw new ApiError(400, "Published assessment content is immutable. Create a new assessment for different questions or rules.");
-  if (wasPublished && req.body.assignedSections) throw new ApiError(400, "Published assessment audiences cannot be changed");
-  const fields = ["title", "description", "category", "difficulty", "instructions", "durationMinutes", "totalMarks", "passingMarks", "attemptsAllowed", "negativeMarking", "shuffleQuestions", "shuffleOptions", "showResultImmediately", "allowAnswerReview", "assignedSections", "questions", "status"];
+  if (wasPublished && ["questions", "category", "difficulty", "totalMarks", "durationMinutes", "negativeMarking", "passingMarks"].some(field => req.body[field] !== undefined)) throw new ApiError(400, "Published assessment content is immutable. Create a new assessment for different questions or rules.");
+  if (wasPublished && (req.body.assignedSections || req.body.assignedGroups)) throw new ApiError(400, "Published assessment audiences cannot be changed");
+  const fields = ["title", "description", "category", "difficulty", "instructions", "rubric", "durationMinutes", "totalMarks", "passingMarks", "attemptsAllowed", "negativeMarking", "shuffleQuestions", "shuffleOptions", "showResultImmediately", "allowAnswerReview", "assignedSections", "assignedGroups", "questions", "status"];
   for (const field of fields) if (req.body[field] !== undefined) assessment[field] = req.body[field];
   if (!wasPublished && ["active", "scheduled"].includes(assessment.status)) {
-    const audience = await sectionAudience(req.user, assessment.organization, assessment.assignedSections);
+    if (!assessment.assignedSections.length && !assessment.assignedGroups.length) throw new ApiError(400, 'Select a cohort or group before publishing');
+    const audience = await assessmentAudience(req.user, assessment.organization, assessment.assignedSections, assessment.assignedGroups);
     assessment.notificationRecipients = audience.map(user => user._id);
     assessment.publishedAt = new Date();
   }

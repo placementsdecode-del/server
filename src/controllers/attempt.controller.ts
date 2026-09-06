@@ -31,7 +31,7 @@ export const startAttempt = asyncHandler(async (req, res) => {
   let active = ledger.attempts.find(attempt => attempt.status === 'in-progress');
   if (!active) {
     const now = new Date();
-    const attempt = { _id: new mongoose.Types.ObjectId(), startedAt: now, dueAt: new Date(+now + assessment.durationMinutes * 60000), status: 'in-progress', title: assessment.title, skill: skillKey(assessment.category), difficulty: assessment.difficulty, totalMarks: assessment.totalMarks, negativeMarking: assessment.negativeMarking, questions: assessment.questions.toObject(), answers: [], marks: [] };
+    const attempt = { _id: new mongoose.Types.ObjectId(), startedAt: now, dueAt: new Date(+now + assessment.durationMinutes * 60000), status: 'in-progress', title: assessment.title, rubric: assessment.rubric, skill: skillKey(assessment.category), difficulty: assessment.difficulty, totalMarks: assessment.totalMarks, passingMarks: assessment.passingMarks, negativeMarking: assessment.negativeMarking, questions: assessment.questions.toObject(), answers: [], marks: [] };
     // Attempt allowance and absence of another active attempt are checked in a single atomic update.
     await AssessmentLedger.updateOne({ ...filter, 'attempts.status': { $ne: 'in-progress' }, $expr: { $lt: [{ $size: '$attempts' }, assessment.attemptsAllowed] } }, { $push: { attempts: attempt } });
     ledger = await AssessmentLedger.findOne(filter);
@@ -67,9 +67,18 @@ export const submitAttempt = asyncHandler(async (req, res) => {
   res.json({ attempt: publicAttempt(final, ledger._id, updated.attempts.indexOf(final) + 1) });
 });
 export const reviewQueue = asyncHandler(async (req, res) => {
-  const students = await User.find(await managedStudents(req.user)).select('_id');
-  const ledgers = await AssessmentLedger.find({ organization: req.user.organization, student: { $in: students.map(student => student._id) }, 'attempts.status': 'submitted' }).populate('student', 'name registrationNumber').lean();
-  res.json({ attempts: ledgers.flatMap(ledger => ledger.attempts.filter(attempt => attempt.status === 'submitted').map(attempt => ({ ...publicAttempt(attempt, ledger._id, ledger.attempts.indexOf(attempt) + 1), student: ledger.student, automaticMarks: attempt.marks }))) });
+  const students = await User.find(await managedStudents(req.user)).select('_id name registrationNumber');
+  const published = await Assessment.find({ organization: req.user.organization, notificationRecipients: { $in: students.map(s => s._id) } }).select('notificationRecipients').lean();
+  const ledgers = await AssessmentLedger.find({ organization: req.user.organization, student: { $in: students.map(student => student._id) } }).populate('student', 'name registrationNumber').populate<{ assessment: { _id: mongoose.Types.ObjectId; passingMarks: number } }>('assessment', 'passingMarks').lean();
+  const roster = published.map(a => ({ assessmentId: String(a._id), students: students.filter(s => a.notificationRecipients.some(id => String(id) === String(s._id))).map(s => ({ _id: s._id, name: s.name, registrationNumber: s.registrationNumber })) }));
+  res.json({ roster, attempts: ledgers.flatMap(ledger => ledger.attempts.map((attempt, index) => ({
+    ...publicAttempt(attempt, ledger._id, index + 1), assessmentId: String(ledger.assessment?._id || ''), student: ledger.student,
+    automaticMarks: autoMarks(attempt.questions, attempt.answers, attempt.negativeMarking), marks: attempt.marks,
+    passingMarks: attempt.passingMarks ?? ledger.assessment?.passingMarks ?? null,
+    correctAnswers: attempt.status === 'in-progress' ? null : attempt.questions.filter((question, i) => automaticTypes.has(question.type) && attempt.marks[i] === question.marks).length,
+    timeSpentSeconds: Math.max(0, Math.round((Math.min(+new Date(attempt.submittedAt || new Date()), +new Date(attempt.dueAt)) - +new Date(attempt.startedAt)) / 1000)),
+    questions: attempt.questions.map(question => ({ id: question._id, type: question.type, text: question.text, options: question.options, marks: question.marks, correctAnswer: question.correctAnswer })),
+  }))) });
 });
 export const gradeAttempt = asyncHandler(async (req, res) => {
   const ledger = await AssessmentLedger.findOne({ _id: req.params.ledgerId, organization: req.user.organization });

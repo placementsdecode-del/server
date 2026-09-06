@@ -1,3 +1,4 @@
+import { managedStudents } from "../services/readiness/access";
 import Section from "../models/Section";
 import User from "../models/User";
 import { ensureRole } from "../services/rbac.service";
@@ -9,9 +10,7 @@ const listUsers = asyncHandler(async (req, res) => {
   const organization = req.user.roleName === "superadmin" ? req.query.organization : req.user.organization;
   const filter: Record<string, unknown> = organization ? { organization } : {};
   if (req.user.roleName === "teacher") {
-    const sections = await Section.find({ organization, assignedTeachers: req.user._id }).select("_id");
-    filter.roleName = "student";
-    filter.section = { $in: sections.map((section) => section._id) };
+    Object.assign(filter, await managedStudents(req.user));
   }
 
   const users = await User.find(filter)
@@ -87,6 +86,7 @@ const createUser = asyncHandler(async (req, res) => {
       department: user.department,
       batch: user.batch,
       section: user.section,
+    cohorts: user.cohorts,
       groups: user.groups,
       preparationScore: user.preparationScore,
       role: user.roleName,
@@ -108,6 +108,7 @@ function sanitizeUser(user) {
     department: user.department,
     batch: user.batch,
     section: user.section,
+    cohorts: user.cohorts,
     groups: user.groups,
     preparationScore: user.preparationScore,
     role: user.roleName,
@@ -180,6 +181,7 @@ const updateUser = asyncHandler(async (req, res) => {
       department: user.department,
       batch: user.batch,
       section: user.section,
+    cohorts: user.cohorts,
       groups: user.groups,
       preparationScore: user.preparationScore,
       role: user.roleName,
@@ -198,3 +200,24 @@ async function validateStudentSection(sectionId, organizationId, roleName) {
 }
 
 export { listUsers, createUser, updateUser };
+
+export const bulkCreateStudents = asyncHandler(async (req, res) => {
+  const rows = req.body.students;
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > 100) throw new ApiError(400, 'Upload 1–100 students at a time');
+  const results = [];
+  const role = await ensureRole('student', req.user.organization);
+  for (const [index, row] of rows.entries()) {
+    try {
+      if (!row || typeof row.name !== 'string' || !row.name.trim() || typeof row.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) throw new ApiError(400, 'Name and a valid email are required');
+      if (!row.section) throw new ApiError(400, 'Select a cohort');
+      await validateStudentSection(row.section, req.user.organization, 'student');
+      if (req.user.roleName === 'teacher' && !await Section.exists({ _id: row.section, organization: req.user.organization, assignedTeachers: req.user._id })) throw new ApiError(403, 'Choose a cohort you coordinate');
+      const password = generateTemporaryPassword(row.email);
+      const user = await User.create({ name: row.name.trim(), email: row.email.trim().toLowerCase(), phoneNumber: row.phoneNumber || '', registrationNumber: row.registrationNumber || '', department: row.department || '', batch: row.batch || '', section: row.section, organization: req.user.organization, role: role._id, roleName: 'student', password, mustChangePassword: true, createdBy: req.user._id });
+      results.push({ row: index + 1, email: user.email, status: 'created', temporaryPassword: password });
+    } catch (error) {
+      results.push({ row: index + 1, email: row?.email || '', status: 'failed', error: error.code === 11000 ? 'Email already exists' : error.message });
+    }
+  }
+  res.json({ results });
+});

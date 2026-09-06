@@ -8,9 +8,10 @@ import ApiError from "../utils/apiError";
 import asyncHandler from "../utils/asyncHandler";
 
 export const mySection = asyncHandler(async (req, res) => {
-  const section = req.user.section ? await Section.findOne({ _id: req.user.section, organization: req.user.organization }).select("name code department batch academicYear description assignedTeachers").populate("assignedTeachers", "name") : null;
-  const classmates = section ? await User.find({ organization: req.user.organization, section: section._id, roleName: "student", status: "active" }).select("name registrationNumber").sort({ name: 1 }) : [];
-  res.json({ section, classmates });
+  const ids = [...(req.user.cohorts || []), ...(req.user.section ? [req.user.section] : [])];
+  const cohorts = await Section.find({ _id: { $in: ids }, organization: req.user.organization }).select('name code department batch academicYear description assignedTeachers').populate('assignedTeachers', 'name').lean();
+  const sections = await Promise.all(cohorts.map(async section => ({ ...section, classmates: await User.find({ organization: req.user.organization, $or: [{ section: section._id }, { cohorts: section._id }], roleName: 'student', status: 'active' }).select('name registrationNumber').sort({ name: 1 }).lean() })));
+  res.json({ sections, section: sections[0] || null, classmates: sections[0]?.classmates || [] });
 });
 export const myWork = asyncHandler(async (req, res) => {
   const filter = { organization: req.user.organization, notificationRecipients: req.user._id };

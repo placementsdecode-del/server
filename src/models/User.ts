@@ -51,6 +51,7 @@ const userSchema = new mongoose.Schema(
       ref: "Section",
       default: null,
     },
+    cohorts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Section" }],
     groups: {
       type: [String],
       default: [],
