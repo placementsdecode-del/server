@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import {
   assignStudentToSection,
+  removeStudentFromSection,
   createSection,
   listSections,
   updateSection,
@@ -14,5 +15,7 @@ router.get("/", requireAuth, requireRoles("superadmin", "admin", "teacher"), lis
 router.post("/", requireAuth, requireRoles("superadmin", "admin"), createSection);
 router.patch("/:sectionId", requireAuth, requireRoles("superadmin", "admin"), updateSection);
 router.post("/:sectionId/students/:studentId", requireAuth, requireRoles("superadmin", "admin", "teacher"), assignStudentToSection);
+
+router.delete("/:sectionId/students/:studentId", requireAuth, requireRoles("superadmin", "admin", "teacher"), removeStudentFromSection);
 
 export default router;

@@ -1268,6 +1268,19 @@ Object.assign(openApiSpec.paths, {
     },
   },
   "/api/sections/{sectionId}/students/{studentId}": {
+    delete: {
+      tags: ["Sections"],
+      summary: "Remove a student from their current section",
+      security: [{ bearerAuth: [] }],
+      parameters: [{ $ref: "#/components/parameters/SectionId" }, { $ref: "#/components/parameters/StudentId" }],
+      responses: {
+        200: { description: "Student unassigned; account retained" },
+        401: { $ref: "#/components/responses/Unauthorized" },
+        403: { $ref: "#/components/responses/Forbidden" },
+        404: { $ref: "#/components/responses/NotFound" },
+        409: { description: "Student no longer belongs to this section; refresh before retrying" },
+      },
+    },
     post: {
       tags: ["Sections"],
       summary: "Assign student to section",
@@ -1276,7 +1289,7 @@ Object.assign(openApiSpec.paths, {
       responses: {
         200: {
           description: "Student assigned",
-          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" }, student: { $ref: "#/components/schemas/User" } } } } },
+          content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } },
         },
         401: { $ref: "#/components/responses/Unauthorized" },
         403: { $ref: "#/components/responses/Forbidden" },

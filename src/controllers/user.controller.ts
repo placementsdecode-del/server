@@ -1,3 +1,4 @@
+import Section from "../models/Section";
 import User from "../models/User";
 import { ensureRole } from "../services/rbac.service";
 import ApiError from "../utils/apiError";
@@ -6,7 +7,12 @@ import { generateTemporaryPassword } from "../utils/password";
 
 const listUsers = asyncHandler(async (req, res) => {
   const organization = req.user.roleName === "superadmin" ? req.query.organization : req.user.organization;
-  const filter = organization ? { organization } : {};
+  const filter: Record<string, unknown> = organization ? { organization } : {};
+  if (req.user.roleName === "teacher") {
+    const sections = await Section.find({ organization, assignedTeachers: req.user._id }).select("_id");
+    filter.roleName = "student";
+    filter.section = { $in: sections.map((section) => section._id) };
+  }
 
   const users = await User.find(filter)
     .select("-password")
@@ -45,6 +51,8 @@ const createUser = asyncHandler(async (req, res) => {
   if (!organizationId) {
     throw new ApiError(400, "organization is required");
   }
+
+  if (section) await validateStudentSection(section, organizationId, roleName);
 
   const role = await ensureRole(roleName, organizationId);
   const generatedPassword = password || generateTemporaryPassword(email);
@@ -121,6 +129,8 @@ const updateUser = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You can only update users in your own organization");
   }
 
+  if (section) await validateStudentSection(section, user.organization, roleName || user.roleName);
+
   if (roleName !== undefined) {
     if (!["admin", "teacher", "student"].includes(roleName)) {
       throw new ApiError(400, "Organization users can only be admin, teacher, or student");
@@ -178,5 +188,13 @@ const updateUser = asyncHandler(async (req, res) => {
     },
   });
 });
+
+async function validateStudentSection(sectionId, organizationId, roleName) {
+  const section = await Section.findById(sectionId);
+  if (roleName !== "student" || !section || section.organization.toString() !== organizationId?.toString()) {
+    throw new ApiError(400, "Choose a section in the student’s organization");
+  }
+  if (section.status !== "active") throw new ApiError(400, "Students can only be assigned to active sections");
+}
 
 export { listUsers, createUser, updateUser };

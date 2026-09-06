@@ -14,7 +14,7 @@ const listSections = asyncHandler(async (req, res) => {
     throw new ApiError(400, "organization is required");
   }
 
-  const sections = await Section.find({ organization })
+  const sections = await Section.find({ organization, ...(req.user.roleName === "teacher" ? { assignedTeachers: req.user._id } : {}) })
     .populate("assignedTeachers", "name email roleName")
     .sort({ createdAt: -1 });
 
@@ -84,6 +84,10 @@ const assignStudentToSection = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You can only update students in your own organization");
   }
 
+  if (req.user.roleName === "teacher" && !section.assignedTeachers.some((id) => id.toString() === req.user._id.toString())) {
+    throw new ApiError(403, "You can only manage your assigned sections");
+  }
+
   const student = await User.findById(req.params.studentId);
 
   if (!student || student.roleName !== "student") {
@@ -94,10 +98,34 @@ const assignStudentToSection = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Student and section must belong to the same organization");
   }
 
+  if (section.status !== "active") throw new ApiError(400, "Students can only be assigned to active sections");
+
+  if (req.user.roleName === "teacher") {
+    const source = student.section ? await Section.findOne({ _id: student.section, assignedTeachers: req.user._id, organization: section.organization }) : null;
+    if (!source) throw new ApiError(403, "You can only move students from your assigned sections");
+  }
+
   student.section = section._id;
   await student.save();
 
-  res.json({ message: "Student assigned to section", student });
+  res.json({ message: "Student assigned to section" });
 });
 
-export { assignStudentToSection, createSection, listSections, updateSection };
+const removeStudentFromSection = asyncHandler(async (req, res) => {
+  const section = await Section.findById(req.params.sectionId);
+  if (!section) throw new ApiError(404, "Section not found");
+  if (req.user.roleName !== "superadmin" && section.organization.toString() !== req.user.organization.toString()) {
+    throw new ApiError(403, "You can only update students in your own organization");
+  }
+  if (req.user.roleName === "teacher" && !section.assignedTeachers.some((id) => id.toString() === req.user._id.toString())) {
+    throw new ApiError(403, "You can only manage your assigned sections");
+  }
+  // Match the current section atomically so an old screen cannot undo a newer move.
+  const student = await User.findOneAndUpdate({
+    _id: req.params.studentId, roleName: "student", organization: section.organization, section: section._id,
+  }, { $set: { section: null } });
+  if (!student) throw new ApiError(409, "Student is no longer in this section. Refresh and try again.");
+  res.json({ message: "Student removed from section" });
+});
+
+export { removeStudentFromSection, assignStudentToSection, createSection, listSections, updateSection };
