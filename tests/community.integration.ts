@@ -138,7 +138,7 @@ async function main() {
           const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
           await context.addInitScript(token => localStorage.setItem('accessToken', token), jwt.sign({ sub: user.toString() }, process.env.JWT_SECRET!));
           const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
-          await page.route('**/api/**', async route => {
+          await context.route('**/api/**', async route => {
             const url = new URL(route.request().url());
             const response = await route.fetch({ url: base + url.pathname.replace(/^\/api/, '') + url.search });
             await route.fulfill({ response });
@@ -236,6 +236,53 @@ async function main() {
         await student.setViewportSize({ width: 390, height: 844 });
         await student.screenshot({ path: '/tmp/placement-practice-mobile.png', fullPage: true });
         assert.ok(await student.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+        await manager.setViewportSize({ width: 1920, height: 1080 });
+        await manager.goto('http://127.0.0.1:5178/admin/students');
+        await manager.getByRole('button', { name: /Alice.*R2/ }).click();
+        await manager.getByRole('region', { name: 'Preparation snapshot' }).waitFor();
+        assert.equal(await manager.locator('[aria-label="Preparation snapshot"] .readiness-report').count(), 0);
+        await manager.screenshot({ path: '/tmp/placement-students-desktop.png', fullPage: true });
+        const popup = manager.context().waitForEvent('page');
+        await manager.getByRole('link', { name: 'Open full report' }).click();
+        const reportPage = await popup;
+        await reportPage.getByRole('heading', { name: 'Alice', exact: true }).waitFor();
+        await reportPage.locator('.readiness-report').waitFor();
+        await reportPage.screenshot({ path: '/tmp/placement-full-report.png', fullPage: true });
+        assert.equal(new URL(reportPage.url()).searchParams.get('student'), alice.toString());
+        await reportPage.close();
+
+        const screens = [
+          [student, '/student', 'student-dashboard'],
+          [student, '/student/progress', 'student-progress'],
+          [student, '/student/profile', 'student-profile'],
+          [student, '/student/study-materials', 'study-materials'],
+          [student, '/student/coding-practice', 'coding-practice'],
+          [manager, '/admin/students', 'students'],
+          [manager, '/admin/cohorts', 'cohorts'],
+          [manager, '/admin/coordinators', 'coordinators'],
+          [manager, '/admin/tasks', 'tasks'],
+          [manager, '/admin/settings', 'organization-settings'],
+          [teacherPage, '/teacher/readiness', 'faculty-readiness'],
+        ];
+        for (const [page, path, name] of screens) {
+          for (const width of [390, 1024, 1920]) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.goto('http://127.0.0.1:5178' + path);
+            await page.locator('h1').first().waitFor();
+            await page.waitForTimeout(150);
+            assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${path} must fit at ${width}px`);
+            await page.screenshot({ path: `/tmp/placement-ui-${name}-${width}.png`, fullPage: true });
+          }
+        }
+        await manager.goto('http://127.0.0.1:5178/admin/students');
+        await manager.getByRole('button', { name: /Alice.*R2/ }).click();
+        for (const width of [390, 1280, 1920]) {
+          await manager.setViewportSize({ width, height: 900 });
+          await manager.getByRole('link', { name: 'Open full report' }).waitFor();
+          const clipped = await manager.locator('[aria-label="Preparation snapshot"]').evaluate(section => [...section.querySelectorAll('p,dd,dt,a')].filter(element => element.scrollWidth > element.clientWidth + 1).map(element => element.textContent));
+          assert.deepEqual(clipped, [], `Student summary text must fit at ${width}px`);
+        }
+        console.log('PASS: 11 screens at mobile, tablet, and desktop widths, compact student summary, and a full report in a new tab.');
         assert.deepEqual(errors, []);
         console.log('PASS: Chromium: cohort cards and participants, student overview, chat, assessment submit, teacher pass/fail and answers, persistent practice, mobile layout.');
       } finally { await browser.close(); }
