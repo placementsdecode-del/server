@@ -274,14 +274,28 @@ async function main() {
             await page.screenshot({ path: `/tmp/placement-ui-${name}-${width}.png`, fullPage: true });
           }
         }
+        await manager.setViewportSize({ width: 390, height: 900 });
         await manager.goto('http://127.0.0.1:5178/admin/students');
         await manager.getByRole('button', { name: /Alice.*R2/ }).click();
+        await manager.getByRole('region', { name: 'Preparation snapshot' }).waitFor();
+        await manager.waitForFunction(() => {
+          const link = document.querySelector('[aria-label="Preparation snapshot"] a')?.getBoundingClientRect();
+          return link !== undefined && link.top >= 64 && link.bottom <= window.innerHeight;
+        });
+        assert.equal(await manager.getByRole('button', { name: /Alice.*R2/ }).getAttribute('aria-pressed'), 'true');
+        await manager.getByRole('combobox', { name: 'Primary cohort' }).waitFor();
         for (const width of [390, 1280, 1920]) {
           await manager.setViewportSize({ width, height: 900 });
           await manager.getByRole('link', { name: 'Open full report' }).waitFor();
           const clipped = await manager.locator('[aria-label="Preparation snapshot"]').evaluate(section => [...section.querySelectorAll('p,dd,dt,a')].filter(element => element.scrollWidth > element.clientWidth + 1).map(element => element.textContent));
           assert.deepEqual(clipped, [], `Student summary text must fit at ${width}px`);
         }
+        await teacherPage.goto('http://127.0.0.1:5178/teacher/students');
+        await teacherPage.getByRole('button', { name: /Alice.*R2/ }).click();
+        await teacherPage.getByRole('region', { name: 'Preparation snapshot' }).waitFor();
+        await teacherPage.getByRole('combobox', { name: 'Primary cohort' }).waitFor();
+        assert.equal(await teacherPage.getByText('Bulk upload students', { exact: true }).count(), 0);
+        assert.equal(await teacherPage.getByRole('button', { name: 'Add Student', exact: true }).count(), 0);
         console.log('PASS: 11 screens at mobile, tablet, and desktop widths, compact student summary, and a full report in a new tab.');
         assert.deepEqual(errors, []);
         console.log('PASS: Chromium: cohort cards and participants, student overview, chat, assessment submit, teacher pass/fail and answers, persistent practice, mobile layout.');
