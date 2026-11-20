@@ -53,6 +53,15 @@ async function main() {
     assert.equal(profile.role, 'student'); assert.deepEqual(profile.skills, ['Python', 'SQL']);
     await request(student, '/auth/profile', 'PATCH', { resumeUrl: 'javascript:alert(1)' }, 400);
     await request(admin, `/organizations/${org._id}`, 'PATCH', { status: 'active' }, 403);
+    const features = (await request(superadmin, '/features')).features;
+    const reportsFeature = features.find(feature => feature.key === 'reports');
+    const analyticsFeature = features.find(feature => feature.key === 'analytics');
+    await request(admin, `/organizations/${org._id}`, 'PATCH', { features: [reportsFeature._id] }, 403);
+    await request(teacher, `/organizations/${org._id}`, 'PATCH', { features: [reportsFeature._id] }, 403);
+    await request(superadmin, `/organizations/${org._id}`, 'PATCH', { features: ['missing-feature'] }, 400);
+    await request(superadmin, `/organizations/${org._id}`, 'PATCH', { features: [reportsFeature._id] });
+    assert.deepEqual((await request(superadmin, `/organizations/${org._id}`)).organization.features.map(feature => feature._id), [reportsFeature._id]);
+    assert.equal((await request(superadmin, `/organizations/${otherOrg._id}`)).organization.features.length, 0);
     await request(superadmin, `/organizations/${org._id}`, 'PATCH', { status: 'suspended' });
     await request(student, '/auth/me', 'GET', undefined, 403);
     await request(null, '/auth/login', 'POST', { email: student.email, password: 'ChangedPass99!' }, 403);
@@ -129,6 +138,83 @@ async function main() {
     assert.equal(await ReadinessEvidence.countDocuments({ student: student._id, requestId: `coding-${code.submission.id}` }), 1);
     delete process.env.CODEBOX_TOKEN;
     await request(student, '/coding/submissions', 'POST', { ...coding, requestId: 'coding-unavailable-002' }, 503);
+    if (process.env.PLAYWRIGHT_MODULE) {
+      const { chromium } = require(process.env.PLAYWRIGHT_MODULE);
+      const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/google-chrome-stable', headless: true, args: ['--no-sandbox'] });
+      try {
+        await AcceptedOrganization.collection.insertMany(Array.from({ length: 35 }, (_, index) => ({
+          registrationRequest: new mongoose.Types.ObjectId(), orgName: `Directory Institution ${index}`, orgEmail: `directory-${index}@example.test`,
+          address: 'Campus address', phoneNumber: '1234567890', status: 'active', features: [], acceptedBy: superadmin._id,
+        })));
+        const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+        await context.addInitScript(token => localStorage.setItem('accessToken', token), jwt.sign({ sub: String(superadmin._id) }, process.env.JWT_SECRET!));
+        const page = await context.newPage();
+        const browserErrors: string[] = []; const apiPaths: string[] = []; let failNextSave = false;
+        page.on('pageerror', error => browserErrors.push(error.message));
+        await context.route('**/api/**', async route => {
+          const url = new URL(route.request().url()); apiPaths.push(url.pathname);
+          if (failNextSave && route.request().method() === 'PATCH' && url.pathname === `/api/organizations/${org._id}`) {
+            failNextSave = false;
+            await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Temporary save failure. Please retry.' }) }); return;
+          }
+          const response = await route.fetch({ url: base + url.pathname.replace(/^\/api/, '') + url.search });
+          await route.fulfill({ response });
+        });
+        await page.goto('http://127.0.0.1:5178/super-admin/organizations');
+        await page.getByRole('button', { name: /First College/ }).click();
+        await page.getByRole('button', { name: 'Edit enabled features' }).click();
+        await page.getByRole('checkbox', { name: 'Analytics', exact: true }).check();
+        await page.getByRole('button', { name: 'Save features', exact: true }).click();
+        await page.getByText('Enabled features saved.', { exact: true }).waitFor();
+        assert.deepEqual((await AcceptedOrganization.findById(org._id)).features.map(String).sort(), [reportsFeature._id, analyticsFeature._id].sort());
+        await page.reload();
+        await page.getByRole('button', { name: /First College/ }).click();
+        await page.getByRole('button', { name: 'Edit enabled features' }).click();
+        assert.equal(await page.getByRole('checkbox', { name: 'Analytics', exact: true }).isChecked(), true);
+        await page.getByRole('checkbox', { name: 'Analytics', exact: true }).uncheck();
+        await page.getByRole('button', { name: 'Cancel changes', exact: true }).click();
+        assert.equal(await page.getByRole('checkbox', { name: 'Analytics', exact: true }).isChecked(), true);
+        await page.getByRole('checkbox', { name: 'Analytics', exact: true }).uncheck();
+        failNextSave = true;
+        await page.getByRole('button', { name: 'Save features', exact: true }).click();
+        await page.getByText('Temporary save failure. Please retry.', { exact: true }).waitFor();
+        assert.equal(await page.getByRole('checkbox', { name: 'Analytics', exact: true }).isChecked(), false);
+        assert.equal(await page.getByText('Enabled features saved.', { exact: true }).count(), 0);
+        await page.getByRole('button', { name: 'Save features', exact: true }).click();
+        await page.getByText('Enabled features saved.', { exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Contact details', exact: true }).click();
+        await page.getByLabel('Address', { exact: true }).fill('Updated campus address with a long line '.repeat(20));
+        await page.getByRole('button', { name: 'Save details', exact: true }).click();
+        await page.getByText('Organization details saved.', { exact: true }).waitFor();
+        assert.match((await AcceptedOrganization.findById(org._id)).address, /^Updated campus/);
+        await page.getByRole('button', { name: 'Overview', exact: true }).click();
+        await page.getByRole('button', { name: 'Suspend organization', exact: true }).click();
+        await page.getByRole('button', { name: 'Confirm suspension', exact: true }).click();
+        await page.getByText('Organization suspended.', { exact: true }).waitFor();
+        await request(student, '/auth/me', 'GET', undefined, 403);
+        await page.getByRole('button', { name: 'Activate organization', exact: true }).click();
+        await page.getByText('Organization activated.', { exact: true }).waitFor();
+        for (const width of [390, 1024, 1440, 1920]) {
+          await page.setViewportSize({ width, height: 900 });
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Organizations must fit at ${width}px`);
+          if (width >= 1024) {
+            const layout = await page.evaluate(() => {
+              const directory = document.querySelector('[aria-label="Organization directory"]')!;
+              const details = document.getElementById('organization-details')!;
+              const content = document.querySelector('[aria-label="Organization information"]')!;
+              return { directoryWidth: directory.clientWidth, detailsWidth: details.clientWidth, bottom: details.getBoundingClientRect().bottom, directoryScrolls: directory.scrollHeight > directory.clientHeight, detailsScrolls: content.scrollHeight > content.clientHeight };
+            });
+            assert.ok(layout.detailsWidth > layout.directoryWidth, 'Details must have more width than the directory');
+            assert.ok(layout.bottom <= 910, 'Details panel must fit below the workspace header');
+            assert.ok(layout.directoryScrolls && layout.detailsScrolls, 'Long directories and information must scroll within their own panels');
+          }
+          await page.screenshot({ path: `/tmp/placement-organizations-${width}.png`, fullPage: true });
+        }
+        assert.ok(!apiPaths.some(path => path.startsWith('/api/users') || path.startsWith('/api/roles')), 'Organization screens must not download unrelated user or role directories');
+        assert.deepEqual(browserErrors, []);
+        console.log('PASS: Chromium organization feature save/reload/cancel/failure/retry, contact persistence, suspension, compact directory, and bounded responsive panels.');
+      } finally { await browser.close(); }
+    }
     await User.collection.insertMany(Array.from({ length: 12000 }, (_, index) => ({
       organization: org._id, role: roles.student._id, roleName: 'student', status: 'active',
       name: `Scale Student ${String(index).padStart(5, '0')}`, email: `scale-${index}@example.test`,
