@@ -103,7 +103,59 @@ async function main() {
     report = await request(alice, '/readiness/me' + query); assert.equal(report.activity.gradedAttempts, 4); assert.equal(report.activity.assessmentsCompleted, 2);
     const cohort = await request(teacher, '/readiness/students' + query); assert.equal(cohort.students.length, 2);
     assert.equal(cohort.students.find(row => row.student.name === 'Alice').decision.decision, 'Hold');
-    console.log('PASS: readiness database/HTTP integration: scoring, evidence provenance, scopes, policy versions, snapshots, academic gates, consent, time deduplication, concurrent attempts, deadlines, immutable grades and reviews.');
+    // Insert students who sort before Alice, including enough to occupy page one.
+    await User.updateMany({ _id: { $in: [alice, bob] } }, { $set: { department: 'CSE', batch: '2026' } });
+    await User.collection.insertMany(Array.from({ length: 52 }, (_, index) => ({
+      organization: org, role: roles.student._id, roleName: 'student', status: 'active', section: section._id,
+      name: `A${String(index).padStart(2, '0')} Candidate`, registrationNumber: `PAGE-${index}`,
+      email: `page-${index}@example.test`, department: 'CSE', batch: '2026',
+    })));
+    await User.updateOne({ _id: unrelated }, { $set: { department: 'ECE', batch: '2027' } });
+    const directory = '/readiness/students' + query + '&view=directory';
+    const firstPage = await request(teacher, directory);
+    assert.equal(firstPage.total, 54);
+    assert.equal(firstPage.students.length, 50);
+    assert.equal(firstPage.pages, 2);
+    assert.equal(firstPage.counts['Insufficient Evidence'], 53);
+    assert.deepEqual(firstPage.departments, ['CSE']);
+    assert.deepEqual(firstPage.batches, ['2026']);
+    assert.equal(firstPage.students[0].overall, null);
+    assert.equal(firstPage.students[0].student.section.name, 'Section A');
+    assert.ok(!firstPage.students.some(row => row.student.id === alice.toString()));
+    const secondPage = await request(teacher, directory + '&page=2');
+    assert.deepEqual(secondPage.counts, firstPage.counts);
+    assert.equal(secondPage.students.length, 4);
+    assert.ok(secondPage.students.some(row => row.student.id === alice.toString()));
+    const match = await request(teacher, directory + `&page=2&department=CSE&batch=2026&skill=coding&minimum=0&eligibility=${encodeURIComponent(report.eligibility.status)}&readiness=${encodeURIComponent(report.status)}`);
+    assert.equal(match.page, 1);
+    assert.equal(match.pages, 1);
+    assert.equal(match.total, 1);
+    assert.deepEqual(match.students.map(row => row.student.id), [alice.toString()]);
+    const searched = await request(teacher, directory + '&search=R2');
+    assert.deepEqual(searched.students.map(row => row.student.id), [alice.toString()]);
+    const zero = await request(teacher, directory + '&skill=coding&minimum=10');
+    assert.equal(zero.total, 0);
+    assert.deepEqual(zero.students, []);
+    await request(teacher, directory + '&skill=coding&minimum=11', 'GET', undefined, 400);
+    await request(teacher, '/readiness/evidence', 'POST', {
+      studentId: bob.toString(), requestId: 'zero-score', reference: 'zero-evaluation', title: 'Zero-mark evaluation',
+      skill: 'coding', difficulty: 'beginner', score: 0, maxScore: 10, rubric: 'No rubric criteria met',
+    }, 201);
+    const zeroScore = await request(teacher, directory + '&search=R3&skill=coding&minimum=0');
+    assert.equal(zeroScore.students[0].overall, 0);
+    assert.equal(zeroScore.students[0].status, 'Insufficient Evidence');
+    const scheduled = (await request(teacher, '/assessments', 'POST', { ...assessmentPayload, title: 'Scheduled practice', status: 'scheduled' }, 201)).assessment;
+    const assessmentSummary = await request(alice, '/readiness/assessments?view=summary');
+    assert.deepEqual(assessmentSummary.upcoming.map(assessment => assessment._id), [scheduled._id]);
+    assert.ok(!assessmentSummary.assessments.some(assessment => assessment._id === scheduled._id));
+    const summary = await request(alice, '/readiness/me' + query + '&view=summary');
+    assert.equal(summary.overall, report.overall);
+    assert.deepEqual(summary.skills, report.skills);
+    assert.equal(summary.history, undefined);
+    const ranked = await request(alice, '/readiness/leaderboard?cohort=' + section.id);
+    assert.equal(ranked.rows[0].department, 'CSE');
+    assert.equal(ranked.rows[0].batch, '2026');
+    console.log('PASS: readiness database/HTTP integration: scoring, evidence provenance, scopes, policy versions, snapshots, academic gates, consent, time deduplication, concurrent attempts, deadlines, immutable grades, reviews, and directory filters across pages.');
   } finally {
     if (server) await new Promise<void>(resolve => server.close(() => resolve()));
     await mongoose.disconnect(); mongo.kill('SIGTERM');

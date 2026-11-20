@@ -25,7 +25,7 @@ export const leaderboard = asyncHandler(async (req, res) => {
     { $group: { _id: '$_id.student', assessments: { $sum: 1 }, score: { $avg: '$percentage' } } },
     { $lookup: { from: User.collection.name, localField: '_id', foreignField: '_id', pipeline: [{ $match: studentFilter }], as: 'student' } },
     { $unwind: '$student' },
-    { $project: { _id: 0, id: '$_id', name: '$student.name', assessments: 1, score: { $round: ['$score', 1] },
+    { $project: { _id: 0, id: '$_id', name: '$student.name', department: { $ifNull: ['$student.department', ''] }, batch: { $ifNull: ['$student.batch', ''] }, assessments: 1, score: { $round: ['$score', 1] },
       cohortIds: { $map: { input: { $setUnion: [{ $ifNull: ['$student.cohorts', []] }, { $cond: ['$student.section', ['$student.section'], []] }] }, as: 'id', in: { $toString: '$$id' } } } } },
     { $sort: { score: -1, assessments: -1, name: 1, id: 1 } },
     { $limit: 50 },

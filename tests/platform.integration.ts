@@ -227,6 +227,13 @@ async function main() {
     const secondPage = await request(admin, `/users?limit=200&before=${directory.nextCursor}`);
     assert.ok(secondPage.users.every(user => !directory.users.some(first => first.id === user.id)));
     console.log(`MEASURED: 12,000 database records, one 50-student report plus two user pages in ${Math.round(performance.now() - startedAt)} ms. This validates data volume and paging, not simultaneous-session capacity.`);
+    const directoryStartedAt = performance.now();
+    const scopedReadiness = await request(admin, '/readiness/students?view=directory&search=Scale%20Student&readiness=Insufficient%20Evidence&page=240');
+    assert.equal(scopedReadiness.counts['Insufficient Evidence'], 12000);
+    assert.equal(scopedReadiness.total, 12000);
+    assert.equal(scopedReadiness.page, 240);
+    assert.equal(scopedReadiness.students.length, 50);
+    console.log(`MEASURED: global readiness counts, filtering, and page 240 of 12,000 students in ${Math.round(performance.now() - directoryStartedAt)} ms on the isolated database.`);
     console.log('PASS: authentication, suspended organizations, RBAC, approval retry, assessment validation and expiry, homework submission and feedback, CodeBox contract and tenant isolation');
   } finally {
     if (server) await new Promise<void>(resolve => server.close(() => resolve()));

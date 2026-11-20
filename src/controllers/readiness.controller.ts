@@ -1,6 +1,7 @@
 import { ReadinessPolicy, ReadinessEvidence, LearningPulse, AcademicRecord, ShortlistDecision, ReadinessConsent } from '../models/Readiness';
 import User from '../models/User';
-import { policies, dateRange, buildReport, loadReportData } from '../services/readiness/report';
+import type { InferSchemaType, Types } from 'mongoose';
+import { policies, dateRange, buildReport, evaluateReadiness, loadReportData } from '../services/readiness/report';
 import { skillKey } from '../services/readiness/scoring';
 import { finite, managedStudents, requireStudent } from '../services/readiness/access';
 import ApiError from '../utils/apiError';
@@ -23,33 +24,109 @@ export const createPolicy = asyncHandler(async (req, res) => {
   const policy = await ReadinessPolicy.create({ organization: req.user.organization, key: body.key, label: body.label, version: (previous?.version || 0) + 1, skills: body.skills, minSamples: body.minSamples, freshnessDays: body.freshnessDays, halfLifeDays: body.halfLifeDays, readyScore: body.readyScore, almostScore: body.almostScore, minCgpa: body.minCgpa, maxBacklogs: body.maxBacklogs, graduationYears: body.graduationYears, createdBy: req.user._id });
   res.status(201).json({ policy });
 });
-async function selectedPolicy(req) {
-  const available = await policies(req.user.organization);
+async function selectedPolicy(req, available?: Awaited<ReturnType<typeof policies>>) {
+  available ??= await policies(req.user.organization);
   const policy = req.query.policy ? available.find(item => String(item._id) === req.query.policy) : available[0];
   if (!policy) throw new ApiError(404, 'Readiness policy not found');
   return policy;
 }
 export const studentReport = asyncHandler(async (req, res) => {
   const student = await requireStudent(req.user, req.params.studentId || req.user._id);
-  res.json(await buildReport(student, await selectedPolicy(req), dateRange(req.query), undefined, req.user.roleName !== 'student'));
+  const summary = req.query.view === 'summary';
+  const report = await buildReport(student, await selectedPolicy(req), dateRange(req.query), undefined, { includeUnreleased: req.user.roleName !== 'student', includeHistory: !summary });
+  const { overall, status, activity, eligibility, skills } = report;
+  res.json(summary ? { overall, status, activity, eligibility, skills } : report);
 });
+type CohortStudent = Pick<InferSchemaType<typeof User.schema>, 'name' | 'registrationNumber' | 'department' | 'batch' | 'section' | 'organization'> & { _id: Types.ObjectId };
+const PAGE_SIZE = 50;
+const REPORT_BATCH_SIZE = 100;
+function candidateFilter(value: unknown) {
+  if (value === undefined) return '';
+  if (typeof value !== 'string' || value.length > 120) throw new ApiError(400, 'Choose valid candidate filters');
+  return value;
+}
 export const cohortReport = asyncHandler(async (req, res) => {
-  const policy = await selectedPolicy(req); const range = dateRange(req.query);
-  const page = Number(req.query.page || 1);
-  if (!Number.isInteger(page) || page < 1 || page > 10000) throw new ApiError(400, 'Choose a valid report page');
+  const available = await policies(req.user.organization);
+  const policy = await selectedPolicy(req, available);
+  const range = dateRange(req.query);
+  const requestedPage = Number(req.query.page || 1);
+  if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > 10000) throw new ApiError(400, 'Choose a valid report page');
+  const [department, batch, readiness, eligibility, skill, minimum] =
+    ['department', 'batch', 'readiness', 'eligibility', 'skill', 'minimum'].map(key => candidateFilter(req.query[key]));
+  const minScore = minimum ? Number(minimum) : null;
+  if ((skill && !policy.skills.some(rule => rule.key === skill)) ||
+      (minScore !== null && (!skill || !finite(minScore, 0, 10)))) throw new ApiError(400, 'Choose a policy skill and a valid minimum score');
+
+  const scope = await managedStudents(req.user);
   const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 80) : '';
-  const filter = await managedStudents(req.user);
+  const filter: Record<string, unknown> = { ...scope, ...(department ? { department } : {}), ...(batch ? { batch } : {}) };
   if (search) {
     const pattern = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     filter.$and = [{ $or: [{ name: pattern }, { registrationNumber: pattern }] }];
   }
-  const [students, total] = await Promise.all([
-    User.find(filter).populate("section", "name code").sort({ name: 1, _id: 1 }).skip((page - 1) * 50).limit(50),
-    User.countDocuments(filter),
-  ]);
-  const loaded = await loadReportData(students, policy, range);
-  const reports = await Promise.all(students.map(student => buildReport(student, policy, range, loaded.get(String(student._id)))));
-  res.json({ policy, range, page, total, pages: Math.ceil(total / 50), students: reports.map(({ student, overall, status, coverage, eligibility, activity, skills, academics, decisions }) => ({ student, overall, status, coverage, eligibility, activity, skills, academics, decision: decisions[0] || null })) });
+  const overview = req.query.view === 'directory';
+  const buildRows = async (students: CohortStudent[]) => {
+    const loaded = await loadReportData(students, policy, range);
+    return Promise.all(students.map(async student => {
+      const { student: identity, overall, status, coverage, eligibility, activity, skills, academics, decisions } =
+        await buildReport(student, policy, range, loaded.get(String(student._id)), { includeHistory: false });
+      return { student: identity, overall, status, coverage, eligibility, activity, skills, academics, decision: decisions[0] || null };
+    }));
+  };
+  const roster = () => User.find(filter).select('name registrationNumber department batch section organization').sort({ name: 1, _id: 1 }).lean();
+  if (!overview && !readiness && !eligibility && !skill) {
+    const [students, total] = await Promise.all([
+      roster().populate('section', 'name code').skip((requestedPage - 1) * PAGE_SIZE).limit(PAGE_SIZE),
+      User.countDocuments(filter),
+    ]);
+    res.json({ policy, range, page: requestedPage, total, pages: Math.ceil(total / PAGE_SIZE), students: await buildRows(students) });
+    return;
+  }
+
+  const [departments, batches] = overview ? await Promise.all([
+    User.distinct('department', scope), User.distinct('batch', scope),
+  ]) : [[], []];
+  const counts: Record<string, number> = {};
+  let total = 0;
+  let matches: CohortStudent[] = [];
+  let lastPage: CohortStudent[] = [];
+  const cursor = roster().cursor({ batchSize: REPORT_BATCH_SIZE });
+  const processBatch = async (students: CohortStudent[]) => {
+    const loaded = await loadReportData(students, policy, range, false);
+    for (const student of students) {
+      const row = evaluateReadiness(loaded.get(String(student._id)), policy, range);
+      if (eligibility && row.eligibility.status !== eligibility) continue;
+      if (skill && !row.skills.some(item => item.key === skill && item.score !== null && (minScore === null || item.score >= minScore))) continue;
+      counts[row.status] = (counts[row.status] || 0) + 1;
+      if (readiness && row.status !== readiness) continue;
+      if (total % PAGE_SIZE === 0) lastPage = [];
+      lastPage.push(student);
+      if (Math.floor(total / PAGE_SIZE) + 1 === requestedPage) matches.push(student);
+      total++;
+    }
+  };
+  try {
+    let students: CohortStudent[] = [];
+    for await (const student of cursor) {
+      students.push(student);
+      if (students.length === REPORT_BATCH_SIZE) {
+        await processBatch(students);
+        students = [];
+        if (res.destroyed) return;
+      }
+    }
+    if (students.length) await processBatch(students);
+  } finally {
+    await cursor.close();
+  }
+
+  const pages = Math.ceil(total / PAGE_SIZE);
+  const page = overview ? Math.min(requestedPage, Math.max(pages, 1)) : requestedPage;
+  if (page !== requestedPage) matches = lastPage;
+  await User.populate(matches, { path: 'section', select: 'name code' });
+  res.json({ policy, range, page, total, pages, students: await buildRows(matches), ...(overview && {
+    policies: available, counts, departments: departments.filter(Boolean).sort(), batches: batches.filter(Boolean).sort(),
+  }) });
 });
 export const learningPulse = asyncHandler(async (req, res) => {
   const { seconds, context } = req.body;

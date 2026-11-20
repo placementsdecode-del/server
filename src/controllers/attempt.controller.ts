@@ -45,20 +45,22 @@ export const assessmentCatalog = asyncHandler(async (req, res) => {
   const summary = req.query.view === 'summary';
   const { organization, _id: student } = req.user;
   await finalizeExpiredAttempts({ organization, student });
-  const status = summary ? 'active' : { $in: ['active', 'scheduled', 'completed'] as const };
+  const status = summary ? { $in: ['active', 'scheduled'] as const } : { $in: ['active', 'scheduled', 'completed'] as const };
   const assessmentQuery = Assessment.find({ organization, notificationRecipients: student, status })
     .select(summary ? 'title category status durationMinutes attemptsAllowed' : 'title category difficulty instructions status durationMinutes attemptsAllowed totalMarks')
     .lean();
   const ledgerQuery = AssessmentLedger.find({ organization, student });
-  const [assessments, ledgers] = await (summary ? assessmentQuery.then(async active => {
+  const [assessments, ledgers] = await (summary ? assessmentQuery.then(async assigned => {
+    const active = assigned.filter(assessment => assessment.status === 'active');
     ledgerQuery.where('assessment').in(active.map(assessment => assessment._id));
     ledgerQuery.select('assessment attempts._id attempts.status attempts.score attempts.totalMarks attempts.startedAt attempts.showResultImmediately');
-    return [active, active.length ? await ledgerQuery.lean() : []] as const;
+    return [assigned, active.length ? await ledgerQuery.lean() : []] as const;
   }) : Promise.all([assessmentQuery, ledgerQuery.lean()]));
   const released = new Set(assessments.filter(assessment => assessment.status === 'completed').map(assessment => String(assessment._id)));
   const byAssessment = new Map(ledgers.map(ledger => [String(ledger.assessment), ledger.attempts]));
   res.json({
-    assessments: assessments.map(assessment => ({
+    ...(summary && { upcoming: assessments.filter(assessment => assessment.status === 'scheduled').map(({ _id, title, category, durationMinutes }) => ({ _id, title, category, durationMinutes })) }),
+    assessments: assessments.filter(assessment => !summary || assessment.status === 'active').map(assessment => ({
       ...assessment,
       attempts: (byAssessment.get(String(assessment._id)) || []).map(attempt => ({
         id: attempt._id, status: attempt.status, score: attempt.status === 'graded' && (released.has(String(assessment._id)) || attempt.showResultImmediately !== false) ? attempt.score : null, totalMarks: attempt.totalMarks, startedAt: attempt.startedAt,
