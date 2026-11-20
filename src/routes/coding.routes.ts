@@ -1,0 +1,12 @@
+import { Router } from 'express';
+import mongoose from 'mongoose';
+import { requireAuth, requireRoles } from '../middleware/auth';
+import { listProblems, createCodingSubmission, getCodingSubmission } from '../controllers/coding.controller';
+import ApiError from '../utils/apiError';
+const router = Router();
+router.use(requireAuth, requireRoles('student'));
+router.param('submissionId', (_req, _res, next, value) => next(mongoose.isValidObjectId(value) ? undefined : new ApiError(400, 'Invalid submission ID')));
+router.get('/problems', listProblems);
+router.post('/submissions', createCodingSubmission);
+router.get('/submissions/:submissionId', getCodingSubmission);
+export default router;

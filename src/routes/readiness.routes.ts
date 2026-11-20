@@ -25,5 +25,6 @@ router.post('/assessments/:assessmentId/start', student, attempts.startAttempt);
 router.patch('/attempts/:ledgerId/:attemptId/answers', student, attempts.saveAnswers);
 router.post('/attempts/:ledgerId/:attemptId/submit', student, attempts.submitAttempt);
 router.get('/reviews', staff, attempts.reviewQueue);
+router.get('/assessments/:assessmentId/reviews', staff, attempts.reviewQueue);
 router.post('/attempts/:ledgerId/:attemptId/review', staff, attempts.gradeAttempt);
 export default router;

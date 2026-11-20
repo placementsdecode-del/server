@@ -1,6 +1,6 @@
 import { ReadinessPolicy, ReadinessEvidence, LearningPulse, AcademicRecord, ShortlistDecision, ReadinessConsent } from '../models/Readiness';
 import User from '../models/User';
-import { policies, dateRange, buildReport } from '../services/readiness/report';
+import { policies, dateRange, buildReport, loadReportData } from '../services/readiness/report';
 import { skillKey } from '../services/readiness/scoring';
 import { finite, managedStudents, requireStudent } from '../services/readiness/access';
 import ApiError from '../utils/apiError';
@@ -31,21 +31,33 @@ async function selectedPolicy(req) {
 }
 export const studentReport = asyncHandler(async (req, res) => {
   const student = await requireStudent(req.user, req.params.studentId || req.user._id);
-  res.json(await buildReport(student, await selectedPolicy(req), dateRange(req.query)));
+  res.json(await buildReport(student, await selectedPolicy(req), dateRange(req.query), undefined, req.user.roleName !== 'student'));
 });
 export const cohortReport = asyncHandler(async (req, res) => {
   const policy = await selectedPolicy(req); const range = dateRange(req.query);
-  const students = await User.find(await managedStudents(req.user)).populate("section", "name code").sort({ name: 1 });
-  const reports = [];
-  // Bound concurrency to avoid one query per student flooding the database at once.
-  for (let index = 0; index < students.length; index += 8) reports.push(...await Promise.all(students.slice(index, index + 8).map(student => buildReport(student, policy, range))));
-  res.json({ policy, range, students: reports.map(({ student, overall, status, coverage, eligibility, activity, skills, academics, decisions }) => ({ student, overall, status, coverage, eligibility, activity, skills, academics, decision: decisions[0] || null })) });
+  const page = Number(req.query.page || 1);
+  if (!Number.isInteger(page) || page < 1 || page > 10000) throw new ApiError(400, 'Choose a valid report page');
+  const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 80) : '';
+  const filter = await managedStudents(req.user);
+  if (search) {
+    const pattern = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$and = [{ $or: [{ name: pattern }, { registrationNumber: pattern }] }];
+  }
+  const [students, total] = await Promise.all([
+    User.find(filter).populate("section", "name code").sort({ name: 1, _id: 1 }).skip((page - 1) * 50).limit(50),
+    User.countDocuments(filter),
+  ]);
+  const loaded = await loadReportData(students, policy, range);
+  const reports = await Promise.all(students.map(student => buildReport(student, policy, range, loaded.get(String(student._id)))));
+  res.json({ policy, range, page, total, pages: Math.ceil(total / 50), students: reports.map(({ student, overall, status, coverage, eligibility, activity, skills, academics, decisions }) => ({ student, overall, status, coverage, eligibility, activity, skills, academics, decision: decisions[0] || null })) });
 });
 export const learningPulse = asyncHandler(async (req, res) => {
   const { seconds, context } = req.body;
   if (!finite(seconds, 1, 30) || !Number.isInteger(seconds) || typeof context !== 'string' || context.length > 100) throw new ApiError(400, 'Invalid activity pulse');
-  const bucket = Math.floor(Date.now() / 30000);
-  await LearningPulse.updateOne({ student: req.user._id, bucket }, { $setOnInsert: { student: req.user._id, organization: req.user.organization, bucket, seconds, context } }, { upsert: true });
+  const currentBucket = Math.floor(Date.now() / 30000);
+  const bucket = req.body.bucket ?? currentBucket;
+  if (!Number.isInteger(bucket) || bucket > currentBucket || bucket < currentBucket - 4) throw new ApiError(400, 'Activity pulse has expired');
+  await LearningPulse.updateOne({ student: req.user._id, bucket }, { $setOnInsert: { student: req.user._id, organization: req.user.organization, bucket, seconds, context, createdAt: new Date(bucket * 30000) } }, { upsert: true });
   res.json({ message: 'Activity recorded' });
 });
 export const recordEvidence = asyncHandler(async (req, res) => {

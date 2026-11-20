@@ -13,7 +13,7 @@ const evidenceSchema = new mongoose.Schema({
   organization: { type: objectId, required: true }, student: { type: objectId, ref: 'User', required: true },
   requestId: { type: String, required: true }, reference: { type: String, required: true }, skill: String, title: String,
   kind: { type: String, enum: ['problem', 'evaluation'], required: true },
-  source: { type: String, enum: ['self-reported', 'instructor-rated'], required: true },
+  source: { type: String, enum: ['self-reported', 'instructor-rated', 'auto-graded'], required: true },
   difficulty: { type: String, enum: ['beginner', 'intermediate', 'advanced'], required: true },
   score: Number, maxScore: Number, solved: Boolean, submissions: Number, testCasesPassed: Number, testCasesTotal: Number,
   rubric: String, feedback: String, createdBy: objectId,

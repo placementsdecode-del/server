@@ -5,10 +5,13 @@ function notFound(req, res, next) {
 }
 
 function errorHandler(error, req, res, next) {
-  const statusCode = error.statusCode || 500;
+  if (res.headersSent) return next(error);
+  const validation = error.name === 'ValidationError' || error.name === 'CastError';
+  const statusCode = error.code === 11000 ? 409 : validation ? 400 : error.statusCode || error.status || 500;
+  const message = error.code === 11000 ? 'A record with these unique details already exists' : error.message || 'Internal server error';
 
   res.status(statusCode).json({
-    message: error.message || "Internal server error",
+    message: statusCode >= 500 && process.env.NODE_ENV === 'production' ? 'The server could not complete this request' : message,
     ...(process.env.NODE_ENV !== "production" && { stack: error.stack }),
   });
 }

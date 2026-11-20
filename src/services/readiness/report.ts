@@ -1,9 +1,16 @@
 import AssessmentLedger from '../../models/AssessmentLedger';
+import Assessment from '../../models/Assessment';
 import { ReadinessPolicy, ReadinessEvidence, LearningPulse, AcademicRecord, ShortlistDecision, ReadinessConsent } from '../../models/Readiness';
 import { calculateReadiness, defaultPolicy, eligibility, Evidence, Policy } from './scoring';
 import ApiError from '../../utils/apiError';
 export async function policies(organization) {
-  await ReadinessPolicy.updateOne({ organization, key: defaultPolicy.key, version: 1 }, { $setOnInsert: { ...defaultPolicy, organization } }, { upsert: true });
+  const existing = await ReadinessPolicy.find({ organization }).sort({ key: 1, version: -1 }).lean();
+  if (existing.some(policy => policy.key === defaultPolicy.key && policy.version === 1)) return existing;
+  try {
+    await ReadinessPolicy.updateOne({ organization, key: defaultPolicy.key, version: 1 }, { $setOnInsert: { ...defaultPolicy, organization, createdAt: new Date(), updatedAt: new Date() } }, { upsert: true, timestamps: false });
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+  }
   return ReadinessPolicy.find({ organization }).sort({ key: 1, version: -1 }).lean();
 }
 export function dateRange(query) {
@@ -15,17 +22,46 @@ export function dateRange(query) {
   if (!Number.isFinite(+from) || !Number.isFinite(+to) || +from > +to || +to > Date.now() + 86400000 || +to - +from > 730 * 86400000) throw new ApiError(400, 'Choose a valid date range of at most two years');
   return { from, to };
 }
-export async function buildReport(student, policy, range) {
+type ReportData = { ledgers: any[]; manual: any[]; pulses: any[]; academic: any; decisions: any[]; consent: any; released: Set<string> };
+
+export async function loadReportData(students, policy, range): Promise<Map<string, ReportData>> {
+  if (!students.length) return new Map();
+  const organization = students[0].organization;
+  const studentIds = students.map(student => student._id);
+  const filter = { organization, student: { $in: studentIds } };
   const { from, to } = range;
-  const [ledgers, manual, pulses, academic, decisions, consent] = await Promise.all([
-    AssessmentLedger.find({ student: student._id, organization: student.organization }).lean(),
-    ReadinessEvidence.find({ student: student._id, organization: student.organization, createdAt: { $lte: to } }).sort({ createdAt: 1 }).lean(),
-    LearningPulse.find({ student: student._id, organization: student.organization, createdAt: { $gte: from, $lte: to } }).lean(),
-    AcademicRecord.findOne({ student: student._id, organization: student.organization, createdAt: { $lte: to } }).sort({ createdAt: -1 }).lean(),
-    ShortlistDecision.find({ student: student._id, organization: student.organization, policy: policy._id }).select('decision reason createdAt recordedBy').populate('recordedBy', 'name').sort({ createdAt: -1 }).limit(20).lean(),
-    ReadinessConsent.findOne({ student: student._id, organization: student.organization }).sort({ createdAt: -1 }).lean(),
+  const [ledgers, manual, pulses, academics, decisions, consents] = await Promise.all([
+    AssessmentLedger.find(filter).select('-attempts.questions -attempts.answers -attempts.marks').lean(),
+    ReadinessEvidence.find({ ...filter, createdAt: { $lte: to } }).sort({ createdAt: 1 }).lean(),
+    LearningPulse.aggregate([
+      { $match: { ...filter, createdAt: { $gte: from, $lte: to } } },
+      { $group: { _id: { student: '$student', day: { $dateTrunc: { date: '$createdAt', unit: 'day', timezone: 'UTC' } } }, seconds: { $sum: '$seconds' } } },
+      { $project: { _id: 0, student: '$_id.student', createdAt: '$_id.day', seconds: 1 } },
+    ]),
+    AcademicRecord.aggregate([{ $match: { ...filter, createdAt: { $lte: to } } }, { $sort: { createdAt: -1, _id: -1 } }, { $group: { _id: '$student', record: { $first: '$$ROOT' } } }, { $replaceRoot: { newRoot: '$record' } }]),
+    ShortlistDecision.find({ ...filter, policy: policy._id }).select('student decision reason createdAt recordedBy').populate('recordedBy', 'name').sort({ createdAt: -1 }).lean(),
+    ReadinessConsent.aggregate([{ $match: filter }, { $sort: { createdAt: -1, _id: -1 } }, { $group: { _id: '$student', record: { $first: '$$ROOT' } } }, { $replaceRoot: { newRoot: '$record' } }]),
   ]);
-  const attempts = ledgers.flatMap(ledger => ledger.attempts.map((attempt, index) => ({ ...attempt, ledgerId: ledger._id, assessmentId: ledger.assessment, attemptNumber: index + 1 })));
+  const delayed = ledgers.filter(ledger => ledger.attempts.some(attempt => attempt.showResultImmediately === false)).map(ledger => ledger.assessment);
+  const completed = delayed.length ? await Assessment.find({ _id: { $in: delayed }, organization, status: 'completed' }).select('_id').lean() : [];
+  const released = new Set(completed.map(assessment => String(assessment._id)));
+  const grouped = new Map<string, ReportData>(students.map(student => [String(student._id), { ledgers: [], manual: [], pulses: [], academic: null, decisions: [], consent: null, released }]));
+  for (const [key, records] of Object.entries({ ledgers, manual, pulses, decisions })) {
+    for (const record of records) {
+      const data = grouped.get(String(record.student));
+      if (data && (key !== 'decisions' || data.decisions.length < 20)) data[key].push(record);
+    }
+  }
+  for (const record of academics) grouped.get(String(record.student)).academic = record;
+  for (const record of consents) grouped.get(String(record.student)).consent = record;
+  return grouped;
+}
+
+export async function buildReport(student, policy, range, loaded?: ReportData, includeUnreleased = true) {
+  const { from, to } = range;
+  const data = loaded || (await loadReportData([student], policy, range)).get(String(student._id));
+  const { ledgers, manual, pulses, academic, decisions, consent } = data;
+  const attempts = ledgers.flatMap(ledger => ledger.attempts.filter(attempt => includeUnreleased || attempt.showResultImmediately !== false || data.released.has(String(ledger.assessment))).map((attempt, index) => ({ ...attempt, ledgerId: ledger._id, assessmentId: ledger.assessment, attemptNumber: index + 1 })));
   const evidence: Evidence[] = [
     ...manual.map(item => ({ id: String(item._id), reference: `manual:${item.skill}:${item.reference}`, skill: item.skill, title: item.title, source: item.source, difficulty: item.difficulty, score: item.score, maxScore: item.maxScore, at: item.createdAt })),
     ...attempts.filter(attempt => attempt.status === 'graded').map(attempt => ({ id: String(attempt._id), reference: `assessment:${attempt.assessmentId}`, skill: attempt.skill, title: attempt.title, source: attempt.gradedBy ? 'instructor-rated' : 'auto-graded', difficulty: attempt.difficulty, score: attempt.score, maxScore: attempt.totalMarks, at: attempt.gradedAt })),
@@ -51,7 +87,7 @@ export async function buildReport(student, policy, range) {
       problemsAttempted: new Set(problemRecords.map(item => `${item.skill}:${item.reference}`)).size,
       problemsSolved: new Set(problemRecords.filter(item => item.solved).map(item => `${item.skill}:${item.reference}`)).size,
       submissions: problemRecords.reduce((sum, item) => sum + (item.submissions || 0), 0),
-      problemEvidenceSource: 'Self-reported practice; excluded from readiness score',
+      problemEvidenceSource: 'Code execution results are verified. Self-reported practice is excluded from readiness scores',
       assessmentsCompleted: new Set(attempts.filter(attempt => attempt.submittedAt && +attempt.submittedAt >= +from && +attempt.submittedAt <= +to).map(attempt => String(attempt.assessmentId))).size,
       gradedAttempts: attempts.filter(attempt => attempt.status === 'graded' && +attempt.gradedAt >= +from && +attempt.gradedAt <= +to).length,
       pendingReview: attempts.filter(attempt => attempt.status === 'submitted').length,

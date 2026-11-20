@@ -5,10 +5,13 @@ const attempt = new mongoose.Schema({
   title: String, skill: String, difficulty: String, totalMarks: Number, passingMarks: Number, negativeMarking: Boolean,
   questions: [mongoose.Schema.Types.Mixed], answers: [mongoose.Schema.Types.Mixed], marks: [Number],
   score: Number, feedback: String, rubric: String, gradedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  showResultImmediately: { type: Boolean, default: true },
+  allowAnswerReview: { type: Boolean, default: true },
 });
 const schema = new mongoose.Schema({
   organization: { type: mongoose.Schema.Types.ObjectId, required: true }, student: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assessment: { type: mongoose.Schema.Types.ObjectId, ref: 'Assessment', required: true }, attempts: [attempt],
 }, { timestamps: true });
 schema.index({ student: 1, assessment: 1 }, { unique: true });
+schema.index({ organization: 1, assessment: 1, student: 1 });
 export default mongoose.model('AssessmentLedger', schema);

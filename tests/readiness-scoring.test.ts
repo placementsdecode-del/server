@@ -18,3 +18,6 @@ test('missing academic verification blocks eligibility', () => { const r = calcu
 test('objective grading is exact and subjective answers require review', () => { assert.deepEqual(autoMarks([{ type: 'single-choice', correctAnswer: 'B', marks: 2 }, { type: 'multiple-choice', correctAnswer: ['A', 'C'], marks: 3 }, { type: 'coding', marks: 5 }], ['B', ['C', 'A'], 'code'], false), [2, 3, null]); });
 test('unanswered questions do not incur a negative mark', () => { assert.deepEqual(autoMarks([{ type: 'single-choice', correctAnswer: 'B', marks: 2, negativeMarks: 1 }], [''], true), [0]); });
 test('numeric missing answer key never silently grades zero as correct', () => { assert.deepEqual(autoMarks([{ type: 'numerical', correctAnswer: null, marks: 2 }], ['0'], false), [0]); });
+test('single choice distinguishes options that differ only by case', () => {
+  assert.deepEqual(autoMarks([{ type: 'single-choice', correctAnswer: 'A', marks: 2 }], ['a'], false), [0]);
+});

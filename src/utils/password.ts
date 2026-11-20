@@ -1,11 +1,7 @@
-function generateTemporaryPassword(email?: string) {
-  const username = email?.split("@")[0]?.trim();
+import { randomBytes } from "node:crypto";
 
-  if (username) {
-    return `${username}@123`;
-  }
-
-  return "user@123";
+function generateTemporaryPassword(_email?: string) {
+  return randomBytes(18).toString("base64url");
 }
 
 export { generateTemporaryPassword };

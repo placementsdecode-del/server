@@ -13,7 +13,8 @@ export function autoMarks(questions, answers, negativeMarking: boolean) {
       correct = Array.isArray(answer) && Array.isArray(question.correctAnswer) && [...new Set(answer)].sort().join('\u0000') === [...new Set(question.correctAnswer)].sort().join('\u0000');
     } else if (question.type === 'numerical') {
       correct = typeof answer === 'string' && answer.trim() !== '' && Number.isFinite(Number(answer)) && Number(answer) === Number(question.correctAnswer);
-    } else correct = typeof answer === 'string' && String(answer).trim().toLowerCase() === String(question.correctAnswer).trim().toLowerCase();
+    } else if (question.type === 'true-false') correct = typeof answer === 'string' && answer.toLowerCase() === String(question.correctAnswer).toLowerCase();
+    else correct = typeof answer === 'string' && answer === question.correctAnswer;
     return correct ? Number(question.marks) : negativeMarking ? -Number(question.negativeMarks || 0) : 0;
   });
 }

@@ -7,6 +7,9 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import app from '../src/app';
 import User from '../src/models/User';
+import GroupMessage from '../src/models/GroupMessage';
+import AcceptedOrganization from '../src/models/AcceptedOrganization';
+import { ensureOrganizationRoles } from '../src/services/rbac.service';
 import Section from '../src/models/Section';
 async function main() {
   const folder = await mkdtemp(join(tmpdir(), 'placement-community-test-'));
@@ -18,6 +21,9 @@ async function main() {
     await new Promise<void>((resolve, reject) => { const timer = setTimeout(resolve, 1500); mongo.once('exit', code => { clearTimeout(timer); reject(new Error(`Test database exited: ${code}`)); }); mongo.once('error', reject); });
     await mongoose.connect('mongodb://127.0.0.1:27963/community_test', { serverSelectionTimeoutMS: 10000 });
     const org = new mongoose.Types.ObjectId(); const otherOrg = new mongoose.Types.ObjectId();
+    await AcceptedOrganization.collection.insertMany([{ _id: org, registrationRequest: new mongoose.Types.ObjectId(), orgEmail: 'org@example.test', status: 'active' }, { _id: otherOrg, registrationRequest: new mongoose.Types.ObjectId(), orgEmail: 'other-org@example.test', status: 'active' }]);
+    const roles = await ensureOrganizationRoles(org);
+    const otherRoles = await ensureOrganizationRoles(otherOrg);
     const [admin, teacher, alice, bob, outsider, unrelated] = Array.from({ length: 6 }, () => new mongoose.Types.ObjectId());
     const section = await Section.create({ organization: org, name: 'Section A', code: 'A', department: 'CSE', batch: '2026', academicYear: '2026-27', assignedTeachers: [teacher] });
     const otherSection = await Section.create({ organization: otherOrg, name: 'Section A', code: 'A', department: 'CSE', batch: '2026', academicYear: '2026-27' });
@@ -28,7 +34,7 @@ async function main() {
       { _id: bob, organization: org, roleName: 'student', name: 'Bob', section: section._id },
       { _id: outsider, organization: otherOrg, roleName: 'student', name: 'Other org student', section: otherSection._id },
       { _id: unrelated, organization: org, roleName: 'student', name: 'Unassigned student' },
-    ].map((user, index) => ({ ...user, email: `test${index}@example.test`, registrationNumber: `R${index}`, status: 'active', role: null })));
+    ].map((user, index) => ({ ...user, email: `test${index}@example.test`, registrationNumber: `R${index}`, status: 'active', role: (String(user.organization) === String(org) ? roles : otherRoles)[user.roleName]._id })));
     server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
     const base = `http://127.0.0.1:${server.address().port}/api`;
     async function request(user, path, method = 'GET', body?, status = 200) {
@@ -79,6 +85,10 @@ async function main() {
     inbox = await request(alice, '/community/notifications'); assert.equal(inbox.notifications.length, 2);
     const assessmentView = (await request(alice, '/community/work')).work.find(item => item.kind === 'assessment');
     assert.ok(assessmentView); assert.equal(assessmentView.questions, undefined);
+    const firstPage = await request(alice, '/community/notifications?limit=1');
+    assert.equal(firstPage.notifications.length, 1); assert.equal(firstPage.unreadCount, 2);
+    const older = await request(alice, `/community/notifications?limit=1&before=${encodeURIComponent(firstPage.nextCursor)}`);
+    assert.notEqual(older.notifications[0]._id, firstPage.notifications[0]._id); assert.equal(older.nextCursor, null);
     await request(admin, '/work', 'POST', { title: 'Wrong audience', instructions: 'No', kind: 'task', assignedSections: [otherSection.id] }, 403);
     // Cohort membership, conversations and student practice stay connected and scoped.
     const extra = await Section.create({ organization: org, name: 'Discussion cohort', code: 'GD', department: 'All', batch: '2026', academicYear: '2026-27', assignedTeachers: [teacher] });
@@ -110,11 +120,18 @@ async function main() {
     assert.equal(importResult.results[0].status, 'created'); assert.ok(importResult.results[0].temporaryPassword);
     assert.equal(importResult.results[1].status, 'failed');
     await request(alice, '/users/bulk-students', 'POST', { students: [] }, 403);
+    const timestamp = new Date();
+    await GroupMessage.insertMany(Array.from({ length: 103 }, (_, index) => ({ organization: org, group: group._id, sender: alice, text: `Pagination message ${index}`, createdAt: timestamp })));
+    const recentMessages = await request(alice, `/groups/${group._id}/messages`);
+    assert.equal(recentMessages.messages.length, 100); assert.equal(recentMessages.hasMore, true);
+    const olderMessages = await request(alice, `/groups/${group._id}/messages?before=${recentMessages.messages[0]._id}`);
+    assert.ok(olderMessages.messages.length > 0); assert.equal(olderMessages.hasMore, false);
+    assert.ok(olderMessages.messages.every(message => !recentMessages.messages.some(recent => recent._id === message._id)));
     await request(teacher, `/sections/${extra.id}/members/${alice}`, 'DELETE');
     assert.equal((await request(alice, '/community/section')).sections.length, 1);
     if (process.env.PLAYWRIGHT_MODULE) {
       const { chromium } = require(process.env.PLAYWRIGHT_MODULE);
-      const browser = await chromium.launch({ executablePath: '/snap/bin/chromium', headless: true, args: ['--no-sandbox'] });
+      const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/snap/bin/chromium', headless: true, args: ['--no-sandbox'] });
       try {
         const errors: string[] = [];
         async function openPage(user, path) {
@@ -138,7 +155,7 @@ async function main() {
         await manager.getByRole('button', { name: 'Students', exact: true }).click();
         await manager.getByText('Bulk upload students', { exact: false }).first().click();
         await manager.getByLabel('Student CSV file').setInputFiles({ name: 'students.csv', mimeType: 'text/csv', buffer: Buffer.from('name,email\nBrowser Import,browser-import@example.test\n') });
-        await manager.getByLabel('Import cohort').selectOption(section.id);
+        await manager.getByLabel('Import cohort', { exact: true }).selectOption(section.id);
         await manager.getByRole('button', { name: 'Import 1 students', exact: true }).click();
         await manager.getByText(/browser-import@example.test: Created · temporary password:/).waitFor();
         const student = await openPage(alice, '/student');
@@ -161,6 +178,53 @@ async function main() {
         await teacherPage.getByRole('button', { name: 'View answers', exact: true }).click();
         await teacherPage.getByText('Expected answer: 2', { exact: true }).waitFor();
         await teacherPage.screenshot({ path: '/tmp/placement-assessment-review.png', fullPage: true });
+        await student.getByRole('button', { name: 'Profile', exact: true }).first().click();
+        await student.getByLabel('Phone number', { exact: true }).fill('9876543210');
+        await student.getByLabel('Skills, separated by commas').fill('Python, SQL');
+        await student.getByLabel('Resume link', { exact: true }).fill('https://example.test/resume');
+        await student.getByRole('button', { name: 'Save profile', exact: true }).click();
+        await student.getByText('Profile updated', { exact: true }).waitFor();
+        await student.reload();
+        assert.equal(await student.getByLabel('Phone number', { exact: true }).inputValue(), '9876543210');
+        await student.getByRole('button', { name: 'Study Materials', exact: true }).first().click();
+        await student.getByRole('button', { name: /Fundamentals.*Open/ }).click();
+        await student.getByRole('button', { name: /Next topic/ }).click();
+        const topic = await student.locator('article h2').first().textContent();
+        await student.getByRole('button', { name: 'Mark complete', exact: true }).click();
+        await student.getByRole('button', { name: 'Save topic', exact: true }).click();
+        await student.reload();
+        await student.getByRole('button', { name: 'Continue studying' }).click();
+        await student.getByRole('heading', { name: topic, exact: true }).first().waitFor();
+        await student.getByRole('button', { name: 'Completed', exact: true }).waitFor();
+        await student.getByRole('button', { name: 'Topic saved', exact: true }).waitFor();
+        await student.getByRole('button', { name: 'Tasks & Activities', exact: true }).first().click();
+        await student.getByLabel('Your response', { exact: true }).first().fill('Browser homework response');
+        await student.getByRole('button', { name: 'Submit response', exact: true }).first().click();
+        await student.getByText('Response submitted', { exact: true }).first().waitFor();
+        await teacherPage.getByRole('button', { name: 'Tasks', exact: true }).first().click();
+        await teacherPage.getByRole('button', { name: 'View responses', exact: true }).first().click();
+        await teacherPage.getByText('Browser homework response', { exact: true }).waitFor();
+        await teacherPage.getByLabel('Feedback', { exact: true }).first().fill('Good explanation');
+        await teacherPage.getByRole('button', { name: 'Review response', exact: true }).click();
+        await teacherPage.getByText('Good explanation', { exact: true }).waitFor();
+        await student.reload();
+        await student.getByText('Good explanation', { exact: true }).waitFor();
+        await student.screenshot({ path: '/tmp/placement-student-work.png', fullPage: true });
+        await student.getByRole('button', { name: 'Career Roadmaps', exact: true }).first().click();
+        await student.getByRole('button', { name: 'Start', exact: true }).click();
+        await student.getByRole('button', { name: 'Mark complete', exact: true }).click();
+        await student.getByRole('button', { name: 'Save milestone', exact: true }).click();
+        await student.getByRole('button', { name: 'Saved', exact: true }).waitFor();
+        await student.getByRole('button', { name: 'Roadmap', exact: true }).click();
+        await student.reload();
+        await student.getByText(/1 of \d+ complete/).waitFor();
+        await student.getByRole('button', { name: 'Coding Practice', exact: true }).first().click();
+        await student.getByLabel('Language', { exact: true }).selectOption('63');
+        await student.getByLabel('Solution', { exact: true }).fill('console.log(42);');
+        await student.reload();
+        await student.getByLabel('Language', { exact: true }).selectOption('63');
+        assert.equal(await student.getByLabel('Solution', { exact: true }).inputValue(), 'console.log(42);');
+        assert.equal(await student.getByRole('button', { name: 'Submit solution', exact: true }).isEnabled(), false);
         await student.getByRole('button', { name: 'Self-Assessment', exact: true }).click();
         await student.getByRole('button', { name: 'Create practice room', exact: true }).click();
         await student.getByLabel('Title', { exact: true }).fill('Browser mock interview');

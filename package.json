@@ -11,7 +11,10 @@
     "start": "node dist/src/server.js",
     "dev": "tsx watch src/server.ts",
     "seed": "tsx src/seed.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:integration": "node --import tsx tests/community.integration.ts && node --import tsx tests/readiness.integration.ts && node --import tsx tests/platform.integration.ts",
+    "test:codebox": "node --import tsx tests/coding-live.integration.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

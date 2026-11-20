@@ -67,7 +67,8 @@ const updateRole = asyncHandler(async (req, res) => {
     }
   }
 
-  if (permissions) {
+  if (permissions !== undefined) {
+    if (!Array.isArray(permissions) || permissions.some(permission => typeof permission !== 'string')) throw new ApiError(400, 'permissions must be an array of strings');
     const allowed = getAllowedPermissions();
     const invalid = permissions.filter((permission) => !allowed.includes(permission));
 

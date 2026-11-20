@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { randomInt } from 'node:crypto';
 import Assessment from '../models/Assessment';
 import AssessmentLedger from '../models/AssessmentLedger';
 import { requireStudent, finite, managedStudents } from '../services/readiness/access';
@@ -7,18 +8,63 @@ import { autoMarks, automaticTypes, validateAnswers } from '../services/readines
 import User from '../models/User';
 import ApiError from '../utils/apiError';
 import asyncHandler from '../utils/asyncHandler';
-function publicAttempt(attempt, ledgerId, number) {
-  return { id: attempt._id, ledgerId, attemptNumber: number, title: attempt.title, skill: attempt.skill, difficulty: attempt.difficulty, status: attempt.status, startedAt: attempt.startedAt, dueAt: attempt.dueAt, submittedAt: attempt.submittedAt, gradedAt: attempt.gradedAt, totalMarks: attempt.totalMarks, score: attempt.status === 'graded' ? attempt.score : null, feedback: attempt.feedback, rubric: attempt.rubric, answers: attempt.answers,
-    questions: attempt.questions.map(question => ({ id: question._id, type: question.type, text: question.text, options: question.options, marks: question.marks })),
+function publicAttempt(attempt, ledgerId, number, released = false, staff = false) {
+  const canSeeResult = staff || released || attempt.showResultImmediately !== false;
+  const canReview = staff || attempt.status === 'in-progress' || (canSeeResult && attempt.allowAnswerReview !== false);
+  return { id: attempt._id, ledgerId, attemptNumber: number, title: attempt.title, skill: attempt.skill, difficulty: attempt.difficulty, status: attempt.status, startedAt: attempt.startedAt, dueAt: attempt.dueAt, submittedAt: attempt.submittedAt, gradedAt: attempt.gradedAt, totalMarks: attempt.totalMarks, score: attempt.status === 'graded' && canSeeResult ? attempt.score : null, feedback: canSeeResult ? attempt.feedback : '', rubric: attempt.rubric, answers: canReview ? attempt.answers : [], resultsPending: !canSeeResult && attempt.status === 'graded',
+    questions: canReview ? attempt.questions.map(question => ({ id: question._id, type: question.type, text: question.text, options: question.options, marks: question.marks })) : [],
   };
 }
+
+export async function finalizeExpiredAttempts(filter) {
+  const now = new Date();
+  const ledgers = await AssessmentLedger.find({ ...filter, attempts: { $elemMatch: { status: 'in-progress', dueAt: { $lte: now } } } }).lean();
+  const updates = ledgers.flatMap(ledger => ledger.attempts.filter(attempt => attempt.status === 'in-progress' && +attempt.dueAt <= +now).map(attempt => {
+    const marks = autoMarks(attempt.questions, attempt.answers, attempt.negativeMarking);
+    const requiresReview = marks.some(mark => mark === null);
+    return { updateOne: {
+      filter: { _id: ledger._id, attempts: { $elemMatch: { _id: attempt._id, status: 'in-progress', dueAt: { $lte: now } } } },
+      update: { $set: { 'attempts.$.marks': marks, 'attempts.$.submittedAt': attempt.dueAt,
+        'attempts.$.status': requiresReview ? 'submitted' : 'graded',
+        'attempts.$.score': requiresReview ? null : Math.max(0, marks.reduce((sum, mark) => sum + (mark || 0), 0)),
+        'attempts.$.gradedAt': requiresReview ? null : now } },
+    } };
+  }));
+  if (updates.length) await AssessmentLedger.bulkWrite(updates);
+}
+
+function shuffle<T>(values: T[]): T[] {
+  const result = [...values];
+  for (let index = result.length - 1; index > 0; index--) {
+    const swap = randomInt(index + 1);
+    [result[index], result[swap]] = [result[swap], result[index]];
+  }
+  return result;
+}
 export const assessmentCatalog = asyncHandler(async (req, res) => {
-  const [assessments, ledgers] = await Promise.all([
-    Assessment.find({ organization: req.user.organization, notificationRecipients: req.user._id, status: { $in: ['active', 'scheduled', 'completed'] } }).select('title category difficulty instructions status durationMinutes attemptsAllowed totalMarks').lean(),
-    AssessmentLedger.find({ student: req.user._id, organization: req.user.organization }).lean(),
-  ]);
-  res.json({ assessments: assessments.map(assessment => ({ ...assessment, attempts: (ledgers.find(ledger => String(ledger.assessment) === String(assessment._id))?.attempts || []).map(attempt => ({ id: attempt._id, status: attempt.status, score: attempt.status === 'graded' ? attempt.score : null, totalMarks: attempt.totalMarks, startedAt: attempt.startedAt })) })),
-    attempts: ledgers.flatMap(ledger => ledger.attempts.map((attempt, index) => publicAttempt(attempt, ledger._id, index + 1))),
+  const summary = req.query.view === 'summary';
+  const { organization, _id: student } = req.user;
+  await finalizeExpiredAttempts({ organization, student });
+  const status = summary ? 'active' : { $in: ['active', 'scheduled', 'completed'] as const };
+  const assessmentQuery = Assessment.find({ organization, notificationRecipients: student, status })
+    .select(summary ? 'title category status durationMinutes attemptsAllowed' : 'title category difficulty instructions status durationMinutes attemptsAllowed totalMarks')
+    .lean();
+  const ledgerQuery = AssessmentLedger.find({ organization, student });
+  const [assessments, ledgers] = await (summary ? assessmentQuery.then(async active => {
+    ledgerQuery.where('assessment').in(active.map(assessment => assessment._id));
+    ledgerQuery.select('assessment attempts._id attempts.status attempts.score attempts.totalMarks attempts.startedAt attempts.showResultImmediately');
+    return [active, active.length ? await ledgerQuery.lean() : []] as const;
+  }) : Promise.all([assessmentQuery, ledgerQuery.lean()]));
+  const released = new Set(assessments.filter(assessment => assessment.status === 'completed').map(assessment => String(assessment._id)));
+  const byAssessment = new Map(ledgers.map(ledger => [String(ledger.assessment), ledger.attempts]));
+  res.json({
+    assessments: assessments.map(assessment => ({
+      ...assessment,
+      attempts: (byAssessment.get(String(assessment._id)) || []).map(attempt => ({
+        id: attempt._id, status: attempt.status, score: attempt.status === 'graded' && (released.has(String(assessment._id)) || attempt.showResultImmediately !== false) ? attempt.score : null, totalMarks: attempt.totalMarks, startedAt: attempt.startedAt,
+      })),
+    })),
+    attempts: summary ? [] : ledgers.flatMap(ledger => ledger.attempts.map((attempt, index) => publicAttempt(attempt, ledger._id, index + 1, released.has(String(ledger.assessment))))),
   });
 });
 export const startAttempt = asyncHandler(async (req, res) => {
@@ -26,13 +72,18 @@ export const startAttempt = asyncHandler(async (req, res) => {
   if (!assessment) throw new ApiError(404, 'An active assigned assessment is required');
   if (!assessment.questions.length || assessment.questions.length > 100 || !finite(assessment.durationMinutes, 1, 600) || !Number.isInteger(assessment.attemptsAllowed) || !finite(assessment.attemptsAllowed, 1, 20)) throw new ApiError(400, 'This assessment needs valid questions, duration and attempt limits');
   const filter = { student: req.user._id, assessment: assessment._id, organization: req.user.organization };
+  await finalizeExpiredAttempts(filter);
   await AssessmentLedger.updateOne(filter, { $setOnInsert: { ...filter, attempts: [] } }, { upsert: true });
   let ledger = await AssessmentLedger.findOne(filter);
   let active = ledger.attempts.find(attempt => attempt.status === 'in-progress');
   if (!active) {
     const now = new Date();
-    const attempt = { _id: new mongoose.Types.ObjectId(), startedAt: now, dueAt: new Date(+now + assessment.durationMinutes * 60000), status: 'in-progress', title: assessment.title, rubric: assessment.rubric, skill: skillKey(assessment.category), difficulty: assessment.difficulty, totalMarks: assessment.totalMarks, passingMarks: assessment.passingMarks, negativeMarking: assessment.negativeMarking, questions: assessment.questions.toObject(), answers: [], marks: [] };
+    let questions = assessment.questions.toObject();
+    if (assessment.shuffleQuestions) questions = shuffle(questions);
+    if (assessment.shuffleOptions) questions = questions.map(question => ({ ...question, options: shuffle(question.options || []) }));
+    const attempt = { _id: new mongoose.Types.ObjectId(), startedAt: now, dueAt: new Date(+now + assessment.durationMinutes * 60000), status: 'in-progress', title: assessment.title, rubric: assessment.rubric, skill: skillKey(assessment.category), difficulty: assessment.difficulty, totalMarks: assessment.totalMarks, passingMarks: assessment.passingMarks, negativeMarking: assessment.negativeMarking, showResultImmediately: assessment.showResultImmediately, allowAnswerReview: assessment.allowAnswerReview, questions: assessment.questions.toObject(), answers: [], marks: [] };
     // Attempt allowance and absence of another active attempt are checked in a single atomic update.
+    attempt.questions = questions;
     await AssessmentLedger.updateOne({ ...filter, 'attempts.status': { $ne: 'in-progress' }, $expr: { $lt: [{ $size: '$attempts' }, assessment.attemptsAllowed] } }, { $push: { attempts: attempt } });
     ledger = await AssessmentLedger.findOne(filter);
     active = ledger.attempts.find(item => item.status === 'in-progress');
@@ -55,7 +106,9 @@ export const saveAnswers = asyncHandler(async (req, res) => {
 });
 export const submitAttempt = asyncHandler(async (req, res) => {
   const { ledger, attempt } = await ownAttempt(req);
-  if (attempt.status !== 'in-progress') return res.json({ attempt: publicAttempt(attempt, ledger._id, ledger.attempts.indexOf(attempt) + 1) });
+  const assessment = await Assessment.findById(ledger.assessment).select('status').lean();
+  const released = assessment?.status === 'completed';
+  if (attempt.status !== 'in-progress') return res.json({ attempt: publicAttempt(attempt, ledger._id, ledger.attempts.indexOf(attempt) + 1, released) });
   if (!validateAnswers(req.body.answers, attempt.questions.length)) throw new ApiError(400, 'Invalid answers');
   const now = new Date();
   // Late submissions only finalize answers already saved before the deadline.
@@ -64,15 +117,31 @@ export const submitAttempt = asyncHandler(async (req, res) => {
   const requiresReview = marks.some(mark => mark === null);
   await AssessmentLedger.updateOne({ _id: ledger._id, attempts: { $elemMatch: { _id: attempt._id, status: 'in-progress' } } }, { $set: { 'attempts.$.answers': answers, 'attempts.$.marks': marks, 'attempts.$.submittedAt': now, 'attempts.$.status': requiresReview ? 'submitted' : 'graded', 'attempts.$.score': requiresReview ? null : Math.max(0, marks.reduce((sum, mark) => sum + (mark || 0), 0)), 'attempts.$.gradedAt': requiresReview ? null : now } });
   const updated = await AssessmentLedger.findById(ledger._id); const final = updated.attempts.id(attempt._id);
-  res.json({ attempt: publicAttempt(final, ledger._id, updated.attempts.indexOf(final) + 1) });
+  res.json({ attempt: publicAttempt(final, ledger._id, updated.attempts.indexOf(final) + 1, released) });
 });
 export const reviewQueue = asyncHandler(async (req, res) => {
-  const students = await User.find(await managedStudents(req.user)).select('_id name registrationNumber');
-  const published = await Assessment.find({ organization: req.user.organization, notificationRecipients: { $in: students.map(s => s._id) } }).select('notificationRecipients').lean();
-  const ledgers = await AssessmentLedger.find({ organization: req.user.organization, student: { $in: students.map(student => student._id) } }).populate('student', 'name registrationNumber').populate<{ assessment: { _id: mongoose.Types.ObjectId; passingMarks: number } }>('assessment', 'passingMarks').lean();
-  const roster = published.map(a => ({ assessmentId: String(a._id), students: students.filter(s => a.notificationRecipients.some(id => String(id) === String(s._id))).map(s => ({ _id: s._id, name: s.name, registrationNumber: s.registrationNumber })) }));
+  const { assessmentId } = req.params;
+  const organization = req.user.organization;
+  const studentScope = await managedStudents(req.user);
+  if (assessmentId) {
+    const assessment = await Assessment.findOne({ _id: assessmentId, organization }).select('notificationRecipients').lean();
+    if (!assessment) throw new ApiError(404, 'Assessment not found');
+    studentScope._id = { $in: assessment.notificationRecipients };
+  }
+  const students = await User.find(studentScope).select('name registrationNumber').lean();
+  const studentIds = students.map(student => student._id);
+  await finalizeExpiredAttempts({ organization, ...(assessmentId ? { assessment: assessmentId } : {}), student: { $in: studentIds } });
+  const [published, ledgers] = await Promise.all([
+    Assessment.find({ organization, ...(assessmentId ? { _id: assessmentId } : {}), notificationRecipients: { $in: studentIds } }).select('notificationRecipients').lean(),
+    AssessmentLedger.find({ organization, ...(assessmentId ? { assessment: assessmentId } : {}), student: { $in: studentIds } })
+      .populate('student', 'name registrationNumber').populate<{ assessment: { _id: mongoose.Types.ObjectId; passingMarks: number } }>('assessment', 'passingMarks').lean(),
+  ]);
+  const roster = published.map(assessment => {
+    const recipients = new Set(assessment.notificationRecipients.map(String));
+    return { assessmentId: String(assessment._id), students: students.filter(student => recipients.has(String(student._id))) };
+  });
   res.json({ roster, attempts: ledgers.flatMap(ledger => ledger.attempts.map((attempt, index) => ({
-    ...publicAttempt(attempt, ledger._id, index + 1), assessmentId: String(ledger.assessment?._id || ''), student: ledger.student,
+    ...publicAttempt(attempt, ledger._id, index + 1, true, true), assessmentId: String(ledger.assessment?._id || ''), student: ledger.student,
     automaticMarks: autoMarks(attempt.questions, attempt.answers, attempt.negativeMarking), marks: attempt.marks,
     passingMarks: attempt.passingMarks ?? ledger.assessment?.passingMarks ?? null,
     correctAnswers: attempt.status === 'in-progress' ? null : attempt.questions.filter((question, i) => automaticTypes.has(question.type) && attempt.marks[i] === question.marks).length,

@@ -70,7 +70,7 @@ async function ensureRole(name, organization = null, isSystem = false) {
         isEditable: definition.isEditable,
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 }
 

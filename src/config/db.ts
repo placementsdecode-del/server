@@ -20,11 +20,13 @@ async function connectDB() {
 
   mongoose.set("strictQuery", true);
   pendingConnection = mongoose.connect(uri);
-  cachedConnection = await pendingConnection;
-  pendingConnection = null;
-  console.log("MongoDB connected");
-
-  return cachedConnection;
+  try {
+    cachedConnection = await pendingConnection;
+    console.log("MongoDB connected");
+    return cachedConnection;
+  } finally {
+    pendingConnection = null;
+  }
 }
 
 export default connectDB;

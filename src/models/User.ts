@@ -24,6 +24,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       minlength: 8,
+      validate: { validator: (value: string) => Buffer.byteLength(value, 'utf8') <= 72, message: 'Password must be at most 72 bytes' },
       select: false,
     },
     phoneNumber: {
@@ -31,6 +32,8 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    skills: { type: [String], default: [] },
+    resumeUrl: { type: String, default: '' },
     registrationNumber: {
       type: String,
       trim: true,
@@ -101,5 +104,9 @@ userSchema.pre("save", async function hashPassword() {
 userSchema.methods.comparePassword = function comparePassword(password) {
   return bcrypt.compare(password, this.password);
 };
+
+userSchema.index({ organization: 1, roleName: 1, status: 1 });
+userSchema.index({ organization: 1, section: 1 });
+userSchema.index({ organization: 1, cohorts: 1 });
 
 export default mongoose.model("User", userSchema);

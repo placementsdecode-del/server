@@ -12,8 +12,14 @@ export const listGroups = asyncHandler(async (req, res) => {
   if (req.user.roleName === "student") filter.participants = { $elemMatch: { student: req.user._id, status: "accepted" } };
   if (req.user.roleName !== "student") filter.kind = { $ne: "practice" };
   const groups = await Group.find(filter).populate("createdBy", "name").populate("coordinators", "name").populate("participants.student", "name registrationNumber").sort({ createdAt: -1 }).lean();
-  const unread = await Promise.all(groups.map(group => GroupMessage.countDocuments({ group: group._id, sender: { $ne: req.user._id }, createdAt: { $gt: group.participants.find(p => String(p.student?._id) === String(req.user._id))?.lastReadAt || new Date(0) } })));
-  res.json({ groups: groups.map((group, index) => ({ ...group, unreadCount: unread[index], participants: req.user.roleName === "student" ? group.participants.filter(member => member.status === "accepted") : group.participants })) });
+  const counts = groups.length ? await GroupMessage.aggregate([
+    { $match: { organization: req.user.organization, sender: { $ne: req.user._id }, $or: groups.map(group => ({
+      group: group._id, createdAt: { $gt: group.participants.find(member => String(member.student?._id) === String(req.user._id))?.lastReadAt || new Date(0) },
+    })) } },
+    { $group: { _id: '$group', count: { $sum: 1 } } },
+  ]) : [];
+  const unread = new Map(counts.map(row => [String(row._id), row.count]));
+  res.json({ groups: groups.map(group => ({ ...group, unreadCount: unread.get(String(group._id)) || 0, participants: req.user.roleName === "student" ? group.participants.filter(member => member.status === "accepted") : group.participants })) });
 });
 export const listInvitations = asyncHandler(async (req, res) => {
   const groups = await Group.find({ organization: req.user.organization, participants: { $elemMatch: { student: req.user._id, status: "pending" } } }).populate("createdBy", "name").select("name description createdBy createdAt").sort({ createdAt: -1 });
@@ -60,9 +66,16 @@ async function accessibleGroup(req) {
 export const listMessages = asyncHandler(async (req, res) => {
   const group = await accessibleGroup(req);
   const readAt = new Date();
-  const messages = await GroupMessage.find({ group: group._id, organization: req.user.organization, createdAt: { $lte: readAt } }).sort({ createdAt: -1 }).limit(100).populate('sender', 'name').lean();
-  await Group.updateOne({ _id: group._id, participants: { $elemMatch: { student: req.user._id, status: 'accepted' } } }, { $set: { 'participants.$.lastReadAt': readAt } });
-  res.json({ messages: messages.reverse() });
+  const filter: Record<string, unknown> = { group: group._id, organization: req.user.organization, createdAt: { $lte: readAt } };
+  if (req.query.before !== undefined) {
+    if (typeof req.query.before !== 'string' || !mongoose.isValidObjectId(req.query.before)) throw new ApiError(400, 'Invalid message cursor');
+    const cursor = await GroupMessage.findOne({ _id: req.query.before, group: group._id }).select('createdAt').lean();
+    if (!cursor) throw new ApiError(400, 'Message cursor not found');
+    filter.$or = [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, _id: { $lt: cursor._id } }];
+  }
+  const rows = await GroupMessage.find(filter).sort({ createdAt: -1, _id: -1 }).limit(101).populate('sender', 'name').lean();
+  if (!req.query.before) await Group.updateOne({ _id: group._id, participants: { $elemMatch: { student: req.user._id, status: 'accepted' } } }, { $max: { 'participants.$.lastReadAt': readAt } });
+  res.json({ messages: rows.slice(0, 100).reverse(), hasMore: rows.length > 100 });
 });
 export const sendMessage = asyncHandler(async (req, res) => {
   const group = await accessibleGroup(req);

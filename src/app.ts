@@ -1,4 +1,5 @@
 import readinessRoutes from "./routes/readiness.routes";
+import codingRoutes from './routes/coding.routes';
 import communityRoutes from "./routes/community.routes";
 import groupRoutes from "./routes/group.routes";
 import workRoutes from "./routes/work.routes";
@@ -30,6 +31,13 @@ app.use(
 );
 app.options(/.*/, cors());
 app.use(express.json({ limit: "1mb" }));
+app.use((req, res, next) => {
+  if (['POST', 'PATCH', 'PUT'].includes(req.method)) {
+    if (req.body === undefined) req.body = {};
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) return res.status(400).json({ message: 'Request body must be a JSON object' });
+  }
+  next();
+});
 app.use(morgan("dev"));
 
 app.get("/", (req, res) => {
@@ -115,6 +123,7 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/work", workRoutes);
 
 app.use("/api/readiness", readinessRoutes);
+app.use('/api/coding', codingRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -11,5 +11,6 @@ const schema = new mongoose.Schema({
   deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 schema.index({ recipient: 1, eventKey: 1 }, { unique: true });
-schema.index({ recipient: 1, deletedAt: 1, createdAt: -1 });
+schema.index({ recipient: 1, deletedAt: 1, createdAt: -1, _id: -1 });
+schema.index({ recipient: 1, deletedAt: 1, read: 1 });
 export default mongoose.model("Notification", schema);

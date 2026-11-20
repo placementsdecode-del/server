@@ -150,7 +150,10 @@ export const addCohortMember = asyncHandler(async (req, res) => {
 export const removeCohortMember = asyncHandler(async (req, res) => {
   const cohort = await Section.findOne({ _id: req.params.sectionId, organization: req.user.organization, ...(req.user.roleName === 'teacher' ? { assignedTeachers: req.user._id } : {}) });
   if (!cohort) throw new ApiError(403, 'Choose a cohort you coordinate');
-  await User.updateOne({ _id: req.params.studentId, organization: req.user.organization, roleName: 'student' }, { $pull: { cohorts: cohort._id } });
-  await User.updateOne({ _id: req.params.studentId, organization: req.user.organization, section: cohort._id }, { $set: { section: null } });
+  const result = await User.updateOne({ _id: req.params.studentId, organization: req.user.organization, roleName: 'student' }, [{ $set: {
+    cohorts: { $filter: { input: { $ifNull: ['$cohorts', []] }, as: 'cohort', cond: { $ne: ['$$cohort', cohort._id] } } },
+    section: { $cond: [{ $eq: ['$section', cohort._id] }, null, '$section'] },
+  } }], { updatePipeline: true });
+  if (!result.matchedCount) throw new ApiError(404, 'Student not found');
   res.json({ message: 'Student removed from cohort' });
 });

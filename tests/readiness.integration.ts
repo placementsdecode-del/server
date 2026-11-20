@@ -7,6 +7,8 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import app from '../src/app';
 import User from '../src/models/User';
+import AcceptedOrganization from '../src/models/AcceptedOrganization';
+import { ensureOrganizationRoles } from '../src/services/rbac.service';
 import Section from '../src/models/Section';
 import AssessmentLedger from '../src/models/AssessmentLedger';
 import { LearningPulse, ShortlistDecision } from '../src/models/Readiness';
@@ -20,6 +22,9 @@ async function main() {
     await new Promise<void>((resolve, reject) => { const timer = setTimeout(resolve, 1500); mongo.once('exit', code => { clearTimeout(timer); reject(new Error(`Test database exited: ${code}`)); }); mongo.once('error', reject); });
     await mongoose.connect('mongodb://127.0.0.1:27963/community_test', { serverSelectionTimeoutMS: 10000 });
     const org = new mongoose.Types.ObjectId(); const otherOrg = new mongoose.Types.ObjectId();
+    await AcceptedOrganization.collection.insertMany([{ _id: org, registrationRequest: new mongoose.Types.ObjectId(), orgEmail: 'org@example.test', status: 'active' }, { _id: otherOrg, registrationRequest: new mongoose.Types.ObjectId(), orgEmail: 'other-org@example.test', status: 'active' }]);
+    const roles = await ensureOrganizationRoles(org);
+    const otherRoles = await ensureOrganizationRoles(otherOrg);
     const [admin, teacher, alice, bob, outsider, unrelated] = Array.from({ length: 6 }, () => new mongoose.Types.ObjectId());
     const section = await Section.create({ organization: org, name: 'Section A', code: 'A', department: 'CSE', batch: '2026', academicYear: '2026-27', assignedTeachers: [teacher] });
     const otherSection = await Section.create({ organization: otherOrg, name: 'Section A', code: 'A', department: 'CSE', batch: '2026', academicYear: '2026-27' });
@@ -30,7 +35,7 @@ async function main() {
       { _id: bob, organization: org, roleName: 'student', name: 'Bob', section: section._id },
       { _id: outsider, organization: otherOrg, roleName: 'student', name: 'Other org student', section: otherSection._id },
       { _id: unrelated, organization: org, roleName: 'student', name: 'Unassigned student' },
-    ].map((user, index) => ({ ...user, email: `test${index}@example.test`, registrationNumber: `R${index}`, status: 'active', role: null })));
+    ].map((user, index) => ({ ...user, email: `test${index}@example.test`, registrationNumber: `R${index}`, status: 'active', role: (String(user.organization) === String(org) ? roles : otherRoles)[user.roleName]._id })));
     server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
     const base = `http://127.0.0.1:${server.address().port}/api`;
     async function request(user, path, method = 'GET', body?, status = 200) {

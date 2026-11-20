@@ -9,6 +9,9 @@ function buildTransport() {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true",
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: process.env.SMTP_USER
       ? {
           user: process.env.SMTP_USER,
@@ -35,8 +38,6 @@ async function sendOrganizationCredentials({ to, orgName, email, password }) {
   const transport = buildTransport();
 
   if (!transport) {
-    console.log("SMTP is not configured. Email preview:");
-    console.log({ to, subject, text });
     return { preview: true };
   }
 

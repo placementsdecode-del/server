@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { requireAuth, requireRoles } from "../middleware/auth";
-import { listWork, createWork, publishWork } from "../controllers/work.controller";
+import { listWork, createWork, publishWork, submitWork, listWorkSubmissions, reviewWork } from "../controllers/work.controller";
 const router = Router();
-router.use(requireAuth, requireRoles("admin", "teacher"));
+router.use(requireAuth);
+router.post('/:workId/submissions', requireRoles('student'), submitWork);
+router.use(requireRoles("admin", "teacher"));
+router.get('/:workId/submissions', listWorkSubmissions);
+router.post('/:workId/submissions/:submissionId/review', reviewWork);
 router.get("/", listWork);
 router.post("/", createWork);
 router.post("/:workId/publish", publishWork);

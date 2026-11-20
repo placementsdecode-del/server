@@ -5,6 +5,7 @@ import { ensureRole } from "../services/rbac.service";
 import ApiError from "../utils/apiError";
 import asyncHandler from "../utils/asyncHandler";
 import { generateTemporaryPassword } from "../utils/password";
+import mongoose from 'mongoose';
 
 const listUsers = asyncHandler(async (req, res) => {
   const organization = req.user.roleName === "superadmin" ? req.query.organization : req.user.organization;
@@ -12,14 +13,23 @@ const listUsers = asyncHandler(async (req, res) => {
   if (req.user.roleName === "teacher") {
     Object.assign(filter, await managedStudents(req.user));
   }
+  const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 200)) throw new ApiError(400, 'Choose a user page size between 1 and 200');
+  if (req.query.before !== undefined) {
+    if (!limit || typeof req.query.before !== 'string' || !mongoose.isValidObjectId(req.query.before)) throw new ApiError(400, 'Invalid user cursor');
+    filter._id = { $lt: req.query.before };
+  }
 
-  const users = await User.find(filter)
+  const query = User.find(filter)
     .select("-password")
-    .populate("role")
+    .populate("role", "permissions")
     .populate("organization", "orgName orgEmail")
-    .sort({ createdAt: -1 });
+    .sort(limit ? { _id: -1 } : { createdAt: -1 });
+  if (limit) query.limit(limit + 1);
+  const rows = await query.lean();
+  const users = limit ? rows.slice(0, limit) : rows;
 
-  res.json({ users: users.map(sanitizeUser) });
+  res.json({ users: users.map(sanitizeUser), ...(limit ? { nextCursor: rows.length > limit ? String(users.at(-1)._id) : null } : {}) });
 });
 
 const createUser = asyncHandler(async (req, res) => {
@@ -37,7 +47,7 @@ const createUser = asyncHandler(async (req, res) => {
     preparationScore,
   } = req.body;
 
-  if (!name || !email || !roleName) {
+  if (typeof name !== 'string' || !name.trim() || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || !roleName) {
     throw new ApiError(400, "name, email, and roleName are required");
   }
 
@@ -104,6 +114,8 @@ function sanitizeUser(user) {
     name: user.name,
     email: user.email,
     phoneNumber: user.phoneNumber,
+    skills: user.skills || [],
+    resumeUrl: user.resumeUrl || '',
     registrationNumber: user.registrationNumber,
     department: user.department,
     batch: user.batch,
@@ -164,7 +176,7 @@ const updateUser = asyncHandler(async (req, res) => {
   if (preparationScore !== undefined) user.preparationScore = preparationScore;
   if (password) {
     user.password = password;
-    user.mustChangePassword = false;
+    user.mustChangePassword = true;
   }
 
   await user.save();

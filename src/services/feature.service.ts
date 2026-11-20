@@ -72,6 +72,8 @@ async function resolveFeatureIds(values: unknown) {
   const keys = uniqueValues.filter((value) => !mongoose.isValidObjectId(value)).map((value) => value.toLowerCase());
 
   const featuresByKey = keys.length ? await Feature.find({ key: { $in: keys }, isActive: true }) : [];
+  const featuresById = ids.length ? await Feature.find({ _id: { $in: ids }, isActive: true }).select('_id') : [];
+  if (featuresById.length !== ids.length) throw new ApiError(400, 'Choose active features that exist');
   const foundKeys = new Set(featuresByKey.map((feature) => feature.key));
   const missingKeys = keys.filter((key) => !foundKeys.has(key));
 

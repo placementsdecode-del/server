@@ -81,6 +81,8 @@ const registerOrgSchema = new mongoose.Schema(
       ref: "AcceptedOrganization",
       default: null,
     },
+    approvalToken: { type: String, select: false },
+    approvalLeaseUntil: { type: Date, select: false },
   },
   { timestamps: true }
 );
